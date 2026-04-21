@@ -71,6 +71,15 @@ struct MindleApp: App {
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandGroup(after: .sidebar) {
+                Button(store.showFileBrowser ? "Hide Files" : "Show Files") {
+                    store.showFileBrowser.toggle()
+                    if store.showFileBrowser && store.fileTree == nil {
+                        store.refreshFileTree()
+                    }
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(store.fileURL == nil)
+
                 Button(store.showAnnotations ? "Hide Annotations" : "Show Annotations") {
                     store.showAnnotations.toggle()
                 }

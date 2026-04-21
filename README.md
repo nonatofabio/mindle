@@ -66,6 +66,7 @@ Requires **macOS 14+** and **Xcode Command Line Tools** (`xcode-select --install
 | `⌘⇧H` | Highlight selection |
 | `⌘⇧N` | Add note to selection |
 | `⌘⇧A` | Toggle annotations sidebar |
+| `⌘⇧F` | Toggle files sidebar |
 | `⌘⇧T` | Cycle theme (light / sepia / dark) |
 | `⌘+` / `⌘-` | Increase / decrease font size |
 

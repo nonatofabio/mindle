@@ -16,6 +16,14 @@ struct Annotation: Identifiable, Codable, Equatable {
     var createdAt: Date = Date()
 }
 
+struct FileNode: Identifiable, Equatable {
+    var id: URL { url }
+    let url: URL
+    let name: String
+    let isDirectory: Bool
+    let children: [FileNode]?   // nil = leaf file; non-nil = directory
+}
+
 @MainActor
 final class DocumentStore: ObservableObject {
     @Published var fileURL: URL?
@@ -25,6 +33,8 @@ final class DocumentStore: ObservableObject {
     @Published var theme: ReaderTheme = .sepia
     @Published var fontScale: Double = 1.0
     @Published var showAnnotations: Bool = false
+    @Published var showFileBrowser: Bool = false
+    @Published var fileTree: FileNode? = nil
 
     // Selection from the web view
     @Published private(set) var selectionText: String = ""
@@ -61,14 +71,72 @@ final class DocumentStore: ObservableObject {
     func open(url: URL) {
         do {
             let text = try String(contentsOf: url, encoding: .utf8)
+            // Re-root the file tree only when the new file is outside the current scope.
+            // Clicking a file inside a subfolder of the current root must preserve rooting.
+            let shouldRebuildTree: Bool
+            if let root = fileTree?.url {
+                shouldRebuildTree = !Self.isDescendant(url: url, of: root)
+            } else {
+                shouldRebuildTree = true
+            }
+
             self.fileURL = url
             self.rawText = text
             self.annotations = []
             self.loadSidecar()
+            if shouldRebuildTree {
+                refreshFileTree()
+            }
             NSDocumentController.shared.noteNewRecentDocumentURL(url)
         } catch {
             NSSound.beep()
         }
+    }
+
+    // MARK: - File browser
+
+    static let browsableExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt"]
+
+    func refreshFileTree() {
+        guard let url = fileURL else { fileTree = nil; return }
+        fileTree = Self.buildTree(at: url.deletingLastPathComponent())
+    }
+
+    private static func isDescendant(url: URL, of ancestor: URL) -> Bool {
+        let aPath = ancestor.standardizedFileURL.path
+        let uPath = url.standardizedFileURL.path
+        let prefix = aPath.hasSuffix("/") ? aPath : aPath + "/"
+        return uPath.hasPrefix(prefix)
+    }
+
+    private static func buildTree(at dir: URL) -> FileNode? {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return FileNode(url: dir, name: dir.lastPathComponent, isDirectory: true, children: [])
+        }
+
+        var children: [FileNode] = []
+        for entry in entries {
+            let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            if isDir {
+                if let sub = buildTree(at: entry), !(sub.children ?? []).isEmpty {
+                    children.append(sub)
+                }
+            } else if browsableExtensions.contains(entry.pathExtension.lowercased()) {
+                children.append(FileNode(url: entry, name: entry.lastPathComponent, isDirectory: false, children: nil))
+            }
+        }
+
+        children.sort { a, b in
+            if a.isDirectory != b.isDirectory { return a.isDirectory }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        }
+
+        return FileNode(url: dir, name: dir.lastPathComponent, isDirectory: true, children: children)
     }
 
     func toggleTheme() {
