@@ -33,7 +33,7 @@ No Electron. No subscriptions. No network calls. Just a fast, local, single-bina
 
 ### Download (recommended)
 
-Grab the latest `Mindle.app.zip` from [**Releases**](https://github.com/nonatofabio/mindle/releases), unzip, and drag to `/Applications`.
+Grab the latest `Mindle.dmg` from [**Releases**](https://github.com/nonatofabio/mindle/releases), open it, and drag **Mindle** into **Applications**. Signed with a Developer ID and notarized by Apple — no Gatekeeper prompt, no terminal commands.
 
 ### Build from source
 
