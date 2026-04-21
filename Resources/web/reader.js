@@ -22,6 +22,21 @@
   if (window.markdownitFootnote) md.use(window.markdownitFootnote);
   if (window.markdownItAnchor) md.use(window.markdownItAnchor, { permalink: false });
 
+  // Allow file: URLs (we rewrite them to our custom scheme) and preserve data:
+  // URLs intact so base64 payloads aren't percent-encoded to death. Still block
+  // javascript:/vbscript: for general link safety.
+  md.validateLink = function (url) {
+    const lower = String(url).toLowerCase();
+    if (/^(javascript|vbscript):/.test(lower)) return false;
+    if (/^data:/.test(lower) && !/^data:image\/(gif|png|jpeg|webp|svg\+xml);/.test(lower)) return false;
+    return true;
+  };
+  const _origNormalizeLink = md.normalizeLink;
+  md.normalizeLink = function (url) {
+    if (/^(data|file):/i.test(url)) return url;
+    return _origNormalizeLink.call(md, url);
+  };
+
   const doc = document.getElementById("doc");
 
   // -------- State --------
@@ -29,6 +44,7 @@
   let currentMarkSets = new Map();
   let renderedHTML = "";
   let searchState = { query: "", current: 0, total: 0, matchSets: [] };
+  let baseDir = "";   // absolute filesystem path of the current file's parent dir
 
   // -------- Swift <-> JS bridge --------
   function postToSwift(channel, payload) {
@@ -41,6 +57,10 @@
     postToSwift("searchResult", { total: searchState.total, current: searchState.current });
   }
 
+  window.mindleSetBaseDir = function (dir) {
+    baseDir = dir || "";
+  };
+
   window.mindleLoad = function (markdown) {
     renderedHTML = md.render(markdown || "");
     // Switching documents clears search state; annotations are replayed below.
@@ -50,7 +70,7 @@
   };
 
   window.mindleSetTheme = function (theme) {
-    document.body.dataset.theme = theme;
+    document.documentElement.dataset.theme = theme;
   };
 
   window.mindleSetFontScale = function (scale) {
@@ -171,6 +191,7 @@
 
   function applyAll() {
     doc.innerHTML = renderedHTML;
+    rewriteImages();
     currentMarkSets.clear();
     searchState.matchSets = [];
     searchState.total = 0;
@@ -186,6 +207,68 @@
     }
 
     applySearchMarks();
+  }
+
+  // -------- Images: rewrite src, block remote, handle broken --------
+
+  function rewriteImages() {
+    const imgs = doc.querySelectorAll("img");
+    imgs.forEach(img => {
+      const src = img.getAttribute("src") || "";
+      const res = resolveImageSrc(src);
+      if (res.blocked) {
+        const ph = document.createElement("span");
+        ph.className = "mindle-img-blocked";
+        ph.textContent = "[remote image hidden — " + (img.alt || src) + "]";
+        img.replaceWith(ph);
+      } else if (res.url !== null && res.url !== src) {
+        img.setAttribute("src", res.url);
+        img.addEventListener("error", () => {
+          const ph = document.createElement("span");
+          ph.className = "mindle-img-missing";
+          ph.textContent = "[image not found — " + (img.alt || src) + "]";
+          img.replaceWith(ph);
+        });
+      } else if (res.url !== null) {
+        // Left as-is (data: URL etc.) — still add broken-image handler.
+        img.addEventListener("error", () => {
+          const ph = document.createElement("span");
+          ph.className = "mindle-img-missing";
+          ph.textContent = "[image not found — " + (img.alt || src) + "]";
+          img.replaceWith(ph);
+        });
+      }
+    });
+  }
+
+  function resolveImageSrc(src) {
+    if (!src) return { url: null };
+    if (src.startsWith("data:")) return { url: src };
+    if (/^https?:/i.test(src)) return { blocked: true };
+    if (/^file:\/\//i.test(src)) {
+      const path = src.replace(/^file:\/\//i, "");
+      return { url: "mindle-file://" + path };
+    }
+    if (src.startsWith("/")) {
+      return { url: "mindle-file://" + encodeURI(src) };
+    }
+    if (!baseDir) return { url: src };
+    const resolved = resolveRelativePath(baseDir, src);
+    return { url: "mindle-file://" + encodeURI(resolved) };
+  }
+
+  function resolveRelativePath(base, rel) {
+    const baseParts = base.split("/").filter(Boolean);
+    const relParts = rel.split("/");
+    for (const p of relParts) {
+      if (p === "" || p === ".") continue;
+      if (p === "..") {
+        baseParts.pop();
+      } else {
+        baseParts.push(p);
+      }
+    }
+    return "/" + baseParts.join("/");
   }
 
   function applySearchMarks() {

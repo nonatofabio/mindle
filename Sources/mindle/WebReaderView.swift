@@ -12,6 +12,7 @@ struct WebReaderView: NSViewRepresentable {
         userContent.add(context.coordinator, name: "annotationClicked")
         userContent.add(context.coordinator, name: "searchResult")
         config.userContentController = userContent
+        config.setURLSchemeHandler(ImageSchemeHandler(), forURLScheme: ImageSchemeHandler.scheme)
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         config.suppressesIncrementalRendering = false
 
@@ -35,6 +36,8 @@ struct WebReaderView: NSViewRepresentable {
         // Only push values that actually changed to avoid resetting DOM/selection
         if store.rawText != coord.lastSource {
             coord.lastSource = store.rawText
+            let baseDir = store.fileURL?.deletingLastPathComponent().path ?? ""
+            web.evaluateJavaScript("window.mindleSetBaseDir(\(jsString(baseDir)));")
             web.evaluateJavaScript("window.mindleLoad(\(jsString(store.rawText)));")
         }
 
