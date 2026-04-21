@@ -1,0 +1,7 @@
+build/
+.DS_Store
+*.swp
+*.swo
+*~
+.sample.md.mindle.json
+*.mindle.json

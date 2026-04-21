@@ -1,0 +1,50 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build Mindle.app
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Verify bundle
+        run: |
+          test -f build/Mindle.app/Contents/MacOS/mindle
+          test -f build/Mindle.app/Contents/Resources/web/reader.html
+          test -f build/Mindle.app/Contents/Info.plist
+          echo "Bundle verified."
+
+      - name: Package for release
+        run: |
+          cd build
+          ditto -c -k --sequesterRsrc --keepParent Mindle.app Mindle.app.zip
+          ls -lh Mindle.app.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mindle.app
+          path: build/Mindle.app.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Mindle.app.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
