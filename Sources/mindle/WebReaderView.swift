@@ -10,6 +10,7 @@ struct WebReaderView: NSViewRepresentable {
         let userContent = WKUserContentController()
         userContent.add(context.coordinator, name: "selectionChanged")
         userContent.add(context.coordinator, name: "annotationClicked")
+        userContent.add(context.coordinator, name: "searchResult")
         config.userContentController = userContent
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         config.suppressesIncrementalRendering = false
@@ -68,6 +69,22 @@ struct WebReaderView: NSViewRepresentable {
             coord.lastFocusID = id
             web.evaluateJavaScript("window.mindleFocusAnnotation(\(jsString(id.uuidString)));")
         }
+
+        let effectiveQuery = store.showSearch ? store.searchQuery : ""
+        if effectiveQuery != coord.lastSearchQuery {
+            coord.lastSearchQuery = effectiveQuery
+            web.evaluateJavaScript("window.mindleSearch(\(jsString(effectiveQuery)));")
+        }
+
+        if let t = store.searchNextRequestedAt, t != coord.lastSearchNextAt {
+            coord.lastSearchNextAt = t
+            web.evaluateJavaScript("window.mindleSearchNext();")
+        }
+
+        if let t = store.searchPrevRequestedAt, t != coord.lastSearchPrevAt {
+            coord.lastSearchPrevAt = t
+            web.evaluateJavaScript("window.mindleSearchPrev();")
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -83,6 +100,9 @@ struct WebReaderView: NSViewRepresentable {
         var lastFontScale: Double = 0
         var lastAnnotations: [Annotation] = []
         var lastFocusID: UUID?
+        var lastSearchQuery: String = ""
+        var lastSearchNextAt: Date?
+        var lastSearchPrevAt: Date?
 
         init(_ p: WebReaderView) { parent = p }
 
@@ -130,6 +150,14 @@ struct WebReaderView: NSViewRepresentable {
                     self.parent.store.focusedAnnotation = id
                     self.parent.store.editingAnnotationID = id
                     self.parent.store.showAnnotations = true
+                }
+
+            case "searchResult":
+                guard let body = message.body as? [String: Any] else { return }
+                let total = (body["total"] as? Int) ?? 0
+                let current = (body["current"] as? Int) ?? 0
+                Task { @MainActor in
+                    self.parent.store.updateSearchResult(total: total, current: current)
                 }
 
             default: break

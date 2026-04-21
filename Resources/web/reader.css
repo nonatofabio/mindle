@@ -12,6 +12,8 @@
   --code-bg: #eadfbf;
   --highlight: rgba(243, 176, 74, 0.55);
   --highlight-note: rgba(217, 122, 42, 0.45);
+  --search: rgba(90, 130, 200, 0.28);
+  --search-current: rgba(90, 130, 200, 0.55);
   --link: #8c5520;
   --selection: rgba(140, 85, 32, 0.28);
   --table-border: #c9b88c;
@@ -28,6 +30,8 @@ body[data-theme="light"] {
   --code-bg: #f2f1ef;
   --highlight: rgba(255, 224, 100, 0.55);
   --highlight-note: rgba(255, 150, 80, 0.45);
+  --search: rgba(100, 155, 255, 0.28);
+  --search-current: rgba(100, 155, 255, 0.55);
   --link: #2f5ad2;
   --selection: rgba(100, 155, 255, 0.35);
   --table-border: #dadada;
@@ -44,6 +48,8 @@ body[data-theme="dark"] {
   --code-bg: #24242b;
   --highlight: rgba(245, 203, 105, 0.28);
   --highlight-note: rgba(255, 130, 80, 0.35);
+  --search: rgba(130, 180, 255, 0.25);
+  --search-current: rgba(130, 180, 255, 0.55);
   --link: #8cb4ff;
   --selection: rgba(120, 150, 220, 0.35);
   --table-border: #3a3a42;
@@ -203,6 +209,18 @@ mark.mindle-hl.has-note {
   background: var(--highlight-note);
 }
 mark.mindle-hl.focused {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+
+mark.mindle-search {
+  background: var(--search);
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+mark.mindle-search.current {
+  background: var(--search-current);
   outline: 1.5px solid var(--accent);
   outline-offset: 1px;
 }

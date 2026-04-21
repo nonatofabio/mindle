@@ -28,6 +28,7 @@
   let annotations = [];
   let currentMarkSets = new Map();
   let renderedHTML = "";
+  let searchState = { query: "", current: 0, total: 0, matchSets: [] };
 
   // -------- Swift <-> JS bridge --------
   function postToSwift(channel, payload) {
@@ -36,10 +37,16 @@
     } catch (_) {}
   }
 
+  function reportSearchResult() {
+    postToSwift("searchResult", { total: searchState.total, current: searchState.current });
+  }
+
   window.mindleLoad = function (markdown) {
     renderedHTML = md.render(markdown || "");
-    doc.innerHTML = renderedHTML;
-    applyAnnotations();
+    // Switching documents clears search state; annotations are replayed below.
+    searchState = { query: "", current: 0, total: 0, matchSets: [] };
+    applyAll();
+    reportSearchResult();
   };
 
   window.mindleSetTheme = function (theme) {
@@ -52,7 +59,7 @@
 
   window.mindleSetAnnotations = function (list) {
     annotations = list || [];
-    applyAnnotations();
+    applyAll();
   };
 
   window.mindleFocusAnnotation = function (id) {
@@ -68,21 +75,41 @@
     return captureSelection();
   };
 
+  window.mindleSearch = function (query) {
+    searchState.query = query || "";
+    searchState.current = 0;
+    applyAll();
+    if (searchState.total > 0) {
+      searchState.current = 1;
+      applyCurrentMatchClass();
+      scrollCurrentMatch();
+    }
+    reportSearchResult();
+  };
+
+  window.mindleSearchNext = function () {
+    if (searchState.total === 0) return;
+    searchState.current = (searchState.current % searchState.total) + 1;
+    applyCurrentMatchClass();
+    scrollCurrentMatch();
+    reportSearchResult();
+  };
+
+  window.mindleSearchPrev = function () {
+    if (searchState.total === 0) return;
+    searchState.current = ((searchState.current - 2 + searchState.total) % searchState.total) + 1;
+    applyCurrentMatchClass();
+    scrollCurrentMatch();
+    reportSearchResult();
+  };
+
   // -------- Selection capture --------
 
-  /**
-   * Build the same flat text that buildTextMap produces, so we can
-   * locate the selection within it and compute prefix/suffix.
-   */
   function getDocFlatText() {
     const map = buildTextMap(doc);
     return map.fullText;
   }
 
-  /**
-   * Get the flat-text representation of the current DOM selection by walking
-   * the selected range's text nodes (matches how buildTextMap concatenates).
-   */
   function getSelectionAsFlatText(range) {
     const walker = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT, {
       acceptNode: function (node) {
@@ -95,7 +122,6 @@
       const n = walker.currentNode;
       const val = n.nodeValue;
       if (!val) continue;
-      // Determine overlap with the range
       let start = 0, end = val.length;
       if (n === range.startContainer) start = range.startOffset;
       if (n === range.endContainer) end = range.endOffset;
@@ -110,11 +136,9 @@
     const range = sel.getRangeAt(0);
     if (!doc.contains(range.commonAncestorContainer)) return null;
 
-    // Get the flat-text version of the selection (same space as buildTextMap)
     const flatSel = getSelectionAsFlatText(range);
     if (!flatSel || !flatSel.trim()) return null;
 
-    // Find it in the full flat text for prefix/suffix context
     const fullFlat = getDocFlatText();
     let prefix = "", suffix = "";
     const idx = fullFlat.indexOf(flatSel);
@@ -125,7 +149,6 @@
     return { text: flatSel, prefix: prefix, suffix: suffix };
   }
 
-  // Debounce selection reports so dragging doesn't trigger a storm of messages
   let selTimer = null;
   document.addEventListener("selectionchange", () => {
     if (selTimer) clearTimeout(selTimer);
@@ -144,28 +167,117 @@
     postToSwift("annotationClicked", { id: id });
   });
 
-  // -------- Apply annotations (non-destructive) --------
-  function applyAnnotations() {
+  // -------- Unified render pipeline: annotations + search --------
+
+  function applyAll() {
     doc.innerHTML = renderedHTML;
     currentMarkSets.clear();
-    if (!annotations.length) return;
+    searchState.matchSets = [];
+    searchState.total = 0;
 
-    // Build text map ONCE from clean DOM, apply all annotations
+    if (annotations.length) {
+      const annoMap = buildTextMap(doc);
+      for (const ann of annotations) {
+        try {
+          const marks = highlightInTextMap(annoMap, ann);
+          if (marks.length) currentMarkSets.set(ann.id, marks);
+        } catch (_) {}
+      }
+    }
+
+    applySearchMarks();
+  }
+
+  function applySearchMarks() {
+    if (!searchState.query) return;
+    const needle = searchState.query.toLowerCase();
+    if (!needle) return;
+
     const textMap = buildTextMap(doc);
+    const full = textMap.fullText.toLowerCase();
 
-    for (const ann of annotations) {
-      try {
-        const marks = highlightInTextMap(textMap, ann);
-        if (marks.length) {
-          currentMarkSets.set(ann.id, marks);
-        }
-      } catch (_) {}
+    const ranges = [];
+    let i = full.indexOf(needle, 0);
+    while (i !== -1) {
+      ranges.push({ start: i, end: i + needle.length });
+      i = full.indexOf(needle, i + needle.length);
+    }
+
+    const matchSets = new Array(ranges.length);
+    // Wrap from the last match backward — earlier ranges' offsets
+    // into their text nodes stay valid because we only split at higher positions.
+    for (let r = ranges.length - 1; r >= 0; r--) {
+      matchSets[r] = wrapSearchRange(textMap.chunks, ranges[r].start, ranges[r].end, r);
+    }
+
+    searchState.total = matchSets.length;
+    searchState.matchSets = matchSets;
+    if (searchState.current > matchSets.length) searchState.current = matchSets.length;
+  }
+
+  function wrapSearchRange(chunks, rangeStart, rangeEnd, matchIndex) {
+    const segments = [];
+    for (const chunk of chunks) {
+      const cStart = chunk.start;
+      const cEnd = cStart + chunk.length;
+      if (cEnd <= rangeStart) continue;
+      if (cStart >= rangeEnd) break;
+      segments.push({
+        node: chunk.node,
+        oStart: Math.max(rangeStart, cStart) - cStart,
+        oEnd: Math.min(rangeEnd, cEnd) - cStart
+      });
+    }
+
+    const marks = [];
+    for (let i = segments.length - 1; i >= 0; i--) {
+      const seg = segments[i];
+      const textNode = seg.node;
+      const parent = textNode.parentNode;
+      if (!parent) continue;
+
+      const fullVal = textNode.nodeValue;
+      const before = fullVal.substring(0, seg.oStart);
+      const highlighted = fullVal.substring(seg.oStart, seg.oEnd);
+      const after = fullVal.substring(seg.oEnd);
+      if (!highlighted) continue;
+
+      const mark = document.createElement("mark");
+      mark.className = "mindle-search";
+      mark.dataset.matchIndex = String(matchIndex);
+      mark.textContent = highlighted;
+
+      if (after) {
+        parent.insertBefore(document.createTextNode(after), textNode.nextSibling);
+      }
+      parent.insertBefore(mark, textNode.nextSibling);
+      if (before) {
+        textNode.nodeValue = before;
+      } else {
+        parent.removeChild(textNode);
+      }
+      marks.unshift(mark);
+    }
+    return marks;
+  }
+
+  function applyCurrentMatchClass() {
+    doc.querySelectorAll("mark.mindle-search.current").forEach(m => m.classList.remove("current"));
+    if (searchState.current < 1 || searchState.current > searchState.matchSets.length) return;
+    const marks = searchState.matchSets[searchState.current - 1];
+    if (marks) marks.forEach(m => m.classList.add("current"));
+  }
+
+  function scrollCurrentMatch() {
+    if (searchState.current < 1) return;
+    const marks = searchState.matchSets[searchState.current - 1];
+    if (marks && marks.length) {
+      marks[0].scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }
 
-  /**
-   * Collect all text nodes under `root` into a flat string with node references.
-   */
+  // -------- Text map + annotation wrapping (shared with search) --------
+
   function buildTextMap(root) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
     const chunks = [];
@@ -179,11 +291,6 @@
     return { chunks, fullText: chunks.map(c => c.node.nodeValue).join("") };
   }
 
-  /**
-   * Find `ann.text` in the flat text (best match via prefix/suffix scoring),
-   * then wrap the matching portions of individual text nodes in <mark> elements.
-   * Never extracts or moves DOM nodes — only splits text nodes and wraps in place.
-   */
   function highlightInTextMap(textMap, ann) {
     const { chunks, fullText } = textMap;
     if (!ann.text) return [];
@@ -239,7 +346,6 @@
       const highlighted = fullVal.substring(seg.oStart, seg.oEnd);
       const after = fullVal.substring(seg.oEnd);
 
-      // Skip whitespace-only segments between block elements — avoids yellow bars in gaps
       if (!highlighted.trim()) continue;
 
       const mark = document.createElement("mark");

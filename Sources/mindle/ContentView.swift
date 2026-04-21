@@ -200,8 +200,90 @@ struct ReaderPane: View {
 
     var body: some View {
         let c = store.theme.colors
-        WebReaderView()
-            .background(c.background)
+        ZStack(alignment: .top) {
+            WebReaderView()
+                .background(c.background)
+
+            if store.showSearch {
+                SearchBar()
+                    .padding(.top, 10)
+                    .padding(.trailing, 14)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+    }
+}
+
+struct SearchBar: View {
+    @EnvironmentObject var store: DocumentStore
+    @FocusState private var queryFocused: Bool
+
+    var body: some View {
+        let c = store.theme.colors
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12))
+                .foregroundStyle(c.muted)
+
+            TextField("Find in document", text: $store.searchQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, design: .serif))
+                .foregroundStyle(c.text)
+                .focused($queryFocused)
+                .frame(minWidth: 180)
+                .onSubmit { store.nextMatch() }
+
+            if !store.searchQuery.isEmpty {
+                Text(store.searchTotal == 0 ? "No matches" : "\(store.searchCurrent) of \(store.searchTotal)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(c.muted)
+                    .frame(minWidth: 70, alignment: .trailing)
+            }
+
+            Button { store.previousMatch() } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(c.muted)
+            .disabled(store.searchTotal == 0)
+            .help("Previous match (⌘⇧G)")
+
+            Button { store.nextMatch() } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(c.muted)
+            .disabled(store.searchTotal == 0)
+            .help("Next match (↩ or ⌘G)")
+
+            Button { store.closeSearch() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(c.muted)
+            .keyboardShortcut(.cancelAction)
+            .help("Close (⎋)")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(c.surface)
+                .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(c.rule.opacity(0.5), lineWidth: 0.5)
+        )
+        .frame(maxWidth: 420)
+        .onAppear { queryFocused = true }
+        .onChange(of: store.showSearch) { _, isShowing in
+            if isShowing { queryFocused = true }
+        }
     }
 }
 

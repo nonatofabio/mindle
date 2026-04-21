@@ -36,6 +36,14 @@ final class DocumentStore: ObservableObject {
     @Published var showFileBrowser: Bool = false
     @Published var fileTree: FileNode? = nil
 
+    // Search
+    @Published var showSearch: Bool = false
+    @Published var searchQuery: String = ""
+    @Published private(set) var searchTotal: Int = 0
+    @Published private(set) var searchCurrent: Int = 0   // 1-based; 0 = no active match
+    @Published var searchNextRequestedAt: Date? = nil
+    @Published var searchPrevRequestedAt: Date? = nil
+
     // Selection from the web view
     @Published private(set) var selectionText: String = ""
     private var selectionPrefix: String = ""
@@ -80,6 +88,7 @@ final class DocumentStore: ObservableObject {
                 shouldRebuildTree = true
             }
 
+            closeSearch()
             self.fileURL = url
             self.rawText = text
             self.annotations = []
@@ -211,6 +220,39 @@ final class DocumentStore: ObservableObject {
 
     func jumpTo(id: UUID) {
         focusedAnnotation = id
+    }
+
+    // MARK: - Search
+
+    func toggleSearch() {
+        if showSearch { closeSearch() } else { openSearch() }
+    }
+
+    func openSearch() {
+        guard fileURL != nil else { NSSound.beep(); return }
+        showSearch = true
+    }
+
+    func closeSearch() {
+        showSearch = false
+        searchQuery = ""
+        searchTotal = 0
+        searchCurrent = 0
+    }
+
+    func nextMatch() {
+        guard showSearch, searchTotal > 0 else { return }
+        searchNextRequestedAt = Date()
+    }
+
+    func previousMatch() {
+        guard showSearch, searchTotal > 0 else { return }
+        searchPrevRequestedAt = Date()
+    }
+
+    func updateSearchResult(total: Int, current: Int) {
+        searchTotal = total
+        searchCurrent = current
     }
 
     // MARK: - Persistence

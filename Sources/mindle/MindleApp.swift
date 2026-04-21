@@ -70,6 +70,17 @@ struct MindleApp: App {
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             }
+            CommandGroup(after: .textEditing) {
+                Button("Find…") { store.toggleSearch() }
+                    .keyboardShortcut("f", modifiers: .command)
+                    .disabled(store.fileURL == nil)
+                Button("Find Next") { store.nextMatch() }
+                    .keyboardShortcut("g", modifiers: .command)
+                    .disabled(!store.showSearch || store.searchTotal == 0)
+                Button("Find Previous") { store.previousMatch() }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                    .disabled(!store.showSearch || store.searchTotal == 0)
+            }
             CommandGroup(after: .sidebar) {
                 Button(store.showFileBrowser ? "Hide Files" : "Show Files") {
                     store.showFileBrowser.toggle()

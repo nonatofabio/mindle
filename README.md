@@ -62,6 +62,8 @@ Requires **macOS 14+** and **Xcode Command Line Tools** (`xcode-select --install
 | Shortcut | Action |
 |----------|--------|
 | `⌘O` | Open a file |
+| `⌘F` | Find in document |
+| `⌘G` / `⌘⇧G` | Next / previous match |
 | `⌘⇧E` | Export annotations (Markdown or JSON) |
 | `⌘⇧H` | Highlight selection |
 | `⌘⇧N` | Add note to selection |
