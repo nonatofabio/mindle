@@ -89,6 +89,7 @@ Annotations use a **text + context** anchoring strategy (inspired by [Hypothes.i
 - [ ] **Image support** — resolve relative image paths from the `.md` file's directory
 - [ ] **Print / PDF export** — `⌘P` with theme-aware print stylesheet
 - [ ] **Homebrew cask** — `brew install --cask mindle`
+- [ ] **iOS / iPadOS app** — multiplatform build sharing the same WebKit reader and annotation engine
 
 ## License
 
