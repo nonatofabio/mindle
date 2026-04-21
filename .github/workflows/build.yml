@@ -95,6 +95,7 @@ jobs:
 
       - name: Notarize, staple, and verify Gatekeeper
         if: env.SIGN_IDENTITY != '' && env.IS_RELEASE_EVENT == 'true'
+        timeout-minutes: 75
         env:
           NOTARY_KEY_P8_B64: ${{ secrets.MACOS_NOTARY_API_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
@@ -103,26 +104,48 @@ jobs:
           set -euo pipefail
           echo "$NOTARY_KEY_P8_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
 
-          # Submit and wait. On any non-"Accepted" status fetch Apple's log
-          # so rejection reasons end up in the workflow output.
+          # Capture notarytool's exit code separately so we can surface
+          # Apple-side state even when notarytool itself times out
+          # (exit 124) or otherwise returns non-zero.
+          set +e
           SUBMISSION_JSON=$(xcrun notarytool submit build/Mindle.dmg \
             --key "$RUNNER_TEMP/AuthKey.p8" \
             --key-id "$NOTARY_KEY_ID" \
             --issuer "$NOTARY_ISSUER_ID" \
-            --wait --timeout 30m \
+            --wait --timeout 60m \
             --output-format json)
+          NOTARY_EXIT=$?
+          set -e
+
           echo "$SUBMISSION_JSON"
-          STATUS=$(echo "$SUBMISSION_JSON" | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin).get("status",""))')
-          SUBMISSION_ID=$(echo "$SUBMISSION_JSON" | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))')
+
+          SUBMISSION_ID=$(echo "$SUBMISSION_JSON" | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || echo "")
+          STATUS=$(echo "$SUBMISSION_JSON" | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || echo "")
+
+          dump_apple_state() {
+            if [ -z "$SUBMISSION_ID" ]; then return; fi
+            echo "---- notarytool info ----"
+            xcrun notarytool info "$SUBMISSION_ID" \
+              --key "$RUNNER_TEMP/AuthKey.p8" \
+              --key-id "$NOTARY_KEY_ID" \
+              --issuer "$NOTARY_ISSUER_ID" || true
+            echo "---- notarytool log ----"
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --key "$RUNNER_TEMP/AuthKey.p8" \
+              --key-id "$NOTARY_KEY_ID" \
+              --issuer "$NOTARY_ISSUER_ID" || true
+          }
+
+          if [ $NOTARY_EXIT -ne 0 ]; then
+            echo "::error::notarytool exited $NOTARY_EXIT (0 = success). Fetching Apple-side state..."
+            dump_apple_state
+            rm -f "$RUNNER_TEMP/AuthKey.p8"
+            exit 1
+          fi
 
           if [ "$STATUS" != "Accepted" ]; then
-            echo "::error::Notarization status was '$STATUS' (expected 'Accepted'). Fetching Apple's log..."
-            if [ -n "$SUBMISSION_ID" ]; then
-              xcrun notarytool log "$SUBMISSION_ID" \
-                --key "$RUNNER_TEMP/AuthKey.p8" \
-                --key-id "$NOTARY_KEY_ID" \
-                --issuer "$NOTARY_ISSUER_ID" || true
-            fi
+            echo "::error::Notarization status was '$STATUS' (expected 'Accepted')."
+            dump_apple_state
             rm -f "$RUNNER_TEMP/AuthKey.p8"
             exit 1
           fi
