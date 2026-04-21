@@ -50,16 +50,48 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **New re
 | `MACOS_NOTARY_API_KEY_ID` | the 10-char Key ID |
 | `MACOS_NOTARY_ISSUER_ID` | the Issuer UUID |
 
-## 4. Cut a release
+## 4. Test the pipeline before tagging
+
+The signed path (codesign, DMG, notarize, Gatekeeper check) only
+runs on tag pushes or a manual workflow dispatch — never on regular
+main pushes or pull requests. This keeps notary submissions off the
+per-commit hot path and keeps signing material out of PR-branch
+builds.
+
+To exercise the signed path without creating a tag or a public
+release, trigger the workflow manually:
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+gh workflow run "Build & Release" -R nonatofabio/mindle --ref main
+gh run list -R nonatofabio/mindle --workflow "Build & Release" --limit 1
+gh run watch -R nonatofabio/mindle <run-id>
 ```
 
-The workflow will build, codesign, create the DMG, submit to the
-notary service, staple the ticket, and attach `Mindle.dmg` to the
-release. Notarization typically takes 2–10 minutes.
+This builds, signs, notarizes, staples, and Gatekeeper-asserts the
+DMG, attaches it as a workflow artifact, and emits nothing publicly.
+Download the artifact and re-verify locally (see "Verifying locally"
+below).
+
+## 5. Cut a release
+
+Once the manual dispatch run is green, push a release tag:
+
+```bash
+# Throwaway release candidate — auto-marked pre-release because the tag
+# name contains "-". Safe to delete afterward.
+git tag v1.1.0-rc1
+git push origin v1.1.0-rc1
+
+# If the RC release looks correct on GitHub, tag the real version:
+git tag v1.1.0
+git push origin v1.1.0
+
+# Clean up the RC once the real release is out.
+git push --delete origin v1.1.0-rc1
+gh release delete v1.1.0-rc1 -R nonatofabio/mindle --yes
+```
+
+Notarization typically takes 2–10 minutes.
 
 ## Verifying locally
 
@@ -84,7 +116,9 @@ All three should report `accepted`.
   unlocked or the partition list wasn't set. The workflow handles this
   via `security set-key-partition-list`; if it recurs, rerun the
   import step.
-- **Notarization rejected** — download the log:
+- **Notarization rejected** — the workflow already fetches Apple's
+  log on any non-Accepted status and prints it to the run output. To
+  fetch it manually from your machine:
 
   ```bash
   xcrun notarytool log <submission-id> --key AuthKey_XXXX.p8 \
