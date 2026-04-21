@@ -6,6 +6,7 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,11 +14,42 @@ permissions:
 jobs:
   build:
     runs-on: macos-14
+    env:
+      # Non-secret mirror so `if:` conditions can gate on signing availability.
+      # Empty string when the secret is absent (e.g. fork PRs) — unsigned path runs.
+      SIGN_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      # The signed pipeline only runs on tag pushes or a manual dispatch —
+      # never on regular main pushes or PRs. Prevents burning notary submissions
+      # on every commit and keeps signing material away from PR branches.
+      IS_RELEASE_EVENT: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.2.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Import signing certificate
+        if: env.SIGN_IDENTITY != '' && env.IS_RELEASE_EVENT == 'true'
+        env:
+          CERT_P12_B64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+          echo "$CERT_P12_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN" \
+            $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          rm "$RUNNER_TEMP/cert.p12"
 
       - name: Build Mindle.app
         run: |
@@ -31,23 +63,136 @@ jobs:
           test -f build/Mindle.app/Contents/Info.plist
           echo "Bundle verified."
 
-      - name: Package for release
+      - name: Codesign with hardened runtime
+        if: env.SIGN_IDENTITY != '' && env.IS_RELEASE_EVENT == 'true'
+        run: |
+          set -euo pipefail
+          /usr/bin/codesign --force --options runtime --timestamp \
+            --entitlements Entitlements.plist \
+            --sign "$SIGN_IDENTITY" \
+            build/Mindle.app
+          /usr/bin/codesign --verify --strict --verbose=2 build/Mindle.app
+
+      - name: Create DMG
+        if: env.SIGN_IDENTITY != '' && env.IS_RELEASE_EVENT == 'true'
+        run: |
+          set -euo pipefail
+          brew install create-dmg
+          mkdir -p build/dmg-source
+          cp -R build/Mindle.app build/dmg-source/
+          create-dmg \
+            --volname "Mindle" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "Mindle.app" 175 180 \
+            --hide-extension "Mindle.app" \
+            --app-drop-link 425 180 \
+            --no-internet-enable \
+            build/Mindle.dmg \
+            build/dmg-source/
+          /usr/bin/codesign --force --sign "$SIGN_IDENTITY" --timestamp build/Mindle.dmg
+
+      - name: Notarize, staple, and verify Gatekeeper
+        if: env.SIGN_IDENTITY != '' && env.IS_RELEASE_EVENT == 'true'
+        timeout-minutes: 75
+        env:
+          NOTARY_KEY_P8_B64: ${{ secrets.MACOS_NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          echo "$NOTARY_KEY_P8_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+
+          # Capture notarytool's exit code separately so we can surface
+          # Apple-side state even when notarytool itself times out
+          # (exit 124) or otherwise returns non-zero.
+          set +e
+          SUBMISSION_JSON=$(xcrun notarytool submit build/Mindle.dmg \
+            --key "$RUNNER_TEMP/AuthKey.p8" \
+            --key-id "$NOTARY_KEY_ID" \
+            --issuer "$NOTARY_ISSUER_ID" \
+            --wait --timeout 60m \
+            --output-format json)
+          NOTARY_EXIT=$?
+          set -e
+
+          echo "$SUBMISSION_JSON"
+
+          SUBMISSION_ID=$(echo "$SUBMISSION_JSON" | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || echo "")
+          STATUS=$(echo "$SUBMISSION_JSON" | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || echo "")
+
+          dump_apple_state() {
+            if [ -z "$SUBMISSION_ID" ]; then return; fi
+            echo "---- notarytool info ----"
+            xcrun notarytool info "$SUBMISSION_ID" \
+              --key "$RUNNER_TEMP/AuthKey.p8" \
+              --key-id "$NOTARY_KEY_ID" \
+              --issuer "$NOTARY_ISSUER_ID" || true
+            echo "---- notarytool log ----"
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --key "$RUNNER_TEMP/AuthKey.p8" \
+              --key-id "$NOTARY_KEY_ID" \
+              --issuer "$NOTARY_ISSUER_ID" || true
+          }
+
+          if [ $NOTARY_EXIT -ne 0 ]; then
+            echo "::error::notarytool exited $NOTARY_EXIT (0 = success). Fetching Apple-side state..."
+            dump_apple_state
+            rm -f "$RUNNER_TEMP/AuthKey.p8"
+            exit 1
+          fi
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::Notarization status was '$STATUS' (expected 'Accepted')."
+            dump_apple_state
+            rm -f "$RUNNER_TEMP/AuthKey.p8"
+            exit 1
+          fi
+
+          xcrun stapler staple build/Mindle.dmg
+          xcrun stapler validate build/Mindle.dmg
+
+          # Gatekeeper sanity check — the DMG must be accepted offline.
+          spctl --assess --type open --context context:primary-signature -v build/Mindle.dmg
+
+          rm "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Package zip (fallback)
         run: |
           cd build
           ditto -c -k --sequesterRsrc --keepParent Mindle.app Mindle.app.zip
           ls -lh Mindle.app.zip
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Mindle.app
-          path: build/Mindle.app.zip
+          name: mindle-${{ github.sha }}
+          path: |
+            build/Mindle.app.zip
+            build/Mindle.dmg
+          if-no-files-found: ignore
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create GitHub Release (signed DMG)
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGN_IDENTITY != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Mindle.dmg
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release (unsigned zip fallback)
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGN_IDENTITY == ''
         uses: softprops/action-gh-release@v2
         with:
           files: build/Mindle.app.zip
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up keychain
+        if: always() && env.KEYCHAIN != ''
+        run: security delete-keychain "$KEYCHAIN" 2>/dev/null || true
