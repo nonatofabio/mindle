@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Called before the SwiftUI scene attaches; buffer and replay.
             pendingURLs.append(contentsOf: urls)
         }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func attach(store: DocumentStore) {
