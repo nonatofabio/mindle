@@ -175,4 +175,82 @@ final class DocumentStore: ObservableObject {
             try? data.write(to: url, options: .atomic)
         }
     }
+
+    // MARK: - Export
+
+    enum ExportFormat { case markdown, json }
+
+    var canExportAnnotations: Bool {
+        fileURL != nil && !annotations.isEmpty
+    }
+
+    func exportAnnotationsWithPanel() {
+        guard canExportAnnotations, let source = fileURL else { NSSound.beep(); return }
+
+        let base = source.deletingPathExtension().lastPathComponent
+        let panel = NSSavePanel()
+        panel.title = "Export Annotations"
+        panel.nameFieldStringValue = "\(base).annotations.md"
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "md") ?? .plainText,
+            .json
+        ]
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let format: ExportFormat = (url.pathExtension.lowercased() == "json") ? .json : .markdown
+        do {
+            let data = try renderAnnotations(format: format, sourceURL: source)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    private func renderAnnotations(format: ExportFormat, sourceURL: URL) throws -> Data {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return try encoder.encode(annotations)
+        case .markdown:
+            return Data(renderAnnotationsMarkdown(sourceURL: sourceURL).utf8)
+        }
+    }
+
+    private func renderAnnotationsMarkdown(sourceURL: URL) -> String {
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        df.timeStyle = .short
+        let stamp = df.string(from: Date())
+        let noun = annotations.count == 1 ? "highlight" : "highlights"
+
+        var out: [String] = []
+        out.append("# Annotations — \(sourceURL.lastPathComponent)")
+        out.append("")
+        out.append("*Exported \(stamp) · \(annotations.count) \(noun)*")
+        out.append("")
+        out.append("---")
+        out.append("")
+
+        for ann in annotations {
+            out.append(ann.note.isEmpty ? "### Highlight" : "### Note")
+            out.append("")
+            let quoted = ann.text
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .map { "> \($0)" }
+                .joined(separator: "\n")
+            out.append(quoted)
+            out.append("")
+            if !ann.note.isEmpty {
+                out.append(ann.note)
+                out.append("")
+            }
+            out.append("---")
+            out.append("")
+        }
+        return out.joined(separator: "\n")
+    }
 }

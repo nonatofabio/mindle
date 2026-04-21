@@ -62,6 +62,7 @@ Requires **macOS 14+** and **Xcode Command Line Tools** (`xcode-select --install
 | Shortcut | Action |
 |----------|--------|
 | `⌘O` | Open a file |
+| `⌘⇧E` | Export annotations (Markdown or JSON) |
 | `⌘⇧H` | Highlight selection |
 | `⌘⇧N` | Add note to selection |
 | `⌘⇧A` | Toggle annotations sidebar |
@@ -83,7 +84,7 @@ Annotations use a **text + context** anchoring strategy (inspired by [Hypothes.i
 ## Roadmap
 
 - [ ] **Search** (`⌘F`) — find-in-document with match highlighting
-- [ ] **Export annotations** — Markdown or JSON dump of all highlights and notes
+- [x] **Export annotations** — Markdown or JSON dump of all highlights and notes
 - [ ] **Multiple files** — tabbed or sidebar-based file browser
 - [ ] **Mermaid diagrams** — render `mermaid` fenced code blocks inline
 - [ ] **Image support** — resolve relative image paths from the `.md` file's directory

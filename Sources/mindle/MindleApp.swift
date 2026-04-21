@@ -51,6 +51,10 @@ struct MindleApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { store.openWithPanel() }
                     .keyboardShortcut("o", modifiers: .command)
+                Divider()
+                Button("Export Annotations…") { store.exportAnnotationsWithPanel() }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .disabled(!store.canExportAnnotations)
             }
             CommandGroup(after: .pasteboard) {
                 Divider()
