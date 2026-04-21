@@ -108,6 +108,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
   <string>NSApplication</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>© 2026 Fabio Nonato. MIT License.</string>
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>

@@ -49,6 +49,9 @@ struct MindleApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Mindle") { showAboutPanel() }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { store.openWithPanel() }
                     .keyboardShortcut("o", modifiers: .command)
@@ -105,4 +108,30 @@ struct MindleApp: App {
             }
         }
     }
+}
+
+@MainActor
+private func showAboutPanel() {
+    let body = NSMutableAttributedString(
+        string: "A quiet place to read Markdown.\n\n",
+        attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.labelColor
+        ]
+    )
+    let coffee = NSMutableAttributedString(
+        string: "☕ Buy me a coffee",
+        attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.linkColor,
+            .link: URL(string: "https://buymeacoffee.com/nonatofabio")!,
+            .cursor: NSCursor.pointingHand
+        ]
+    )
+    body.append(coffee)
+
+    NSApp.orderFrontStandardAboutPanel(options: [
+        .credits: body
+    ])
+    NSApp.activate(ignoringOtherApps: true)
 }
