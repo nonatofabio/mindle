@@ -9,6 +9,13 @@ BIN_NAME="mindle"
 APP_BUNDLE="build/${APP_NAME}.app"
 BIN="build/${BIN_NAME}"
 
+# User-facing (marketing) version — bump this when cutting a release.
+SHORT_VERSION="1.2.0"
+# Monotonic build number derived from commit history, so the About
+# panel shows a distinct "Version X.Y.Z (N)" instead of "(X.Y.Z)".
+# Falls back to 1 when git history isn't available (shallow clone).
+BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+
 echo "→ Compiling Swift sources…"
 mkdir -p build
 swiftc -O \
@@ -79,7 +86,7 @@ SWIFTEOF
   rm -rf "$ICON_TMP"
 fi
 
-cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
+cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -93,9 +100,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIdentifier</key>
   <string>local.fnp.mindle</string>
   <key>CFBundleVersion</key>
-  <string>1.2.0</string>
+  <string>${BUILD_NUMBER}</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.2.0</string>
+  <string>${SHORT_VERSION}</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleIconFile</key>
