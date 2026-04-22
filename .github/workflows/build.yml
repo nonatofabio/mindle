@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-26
     env:
       # Non-secret mirror so `if:` conditions can gate on signing availability.
       # Empty string when the secret is absent (e.g. fork PRs) — unsigned path runs.
@@ -28,7 +28,10 @@ jobs:
           fetch-depth: 0   # full history so build.sh's rev-list count is accurate
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.2.app || sudo xcode-select -s /Applications/Xcode.app
+        # Xcode 26 ships the macOS 26 SDK, which is what lights up
+        # Apple's Liquid Glass material on Tahoe machines while still
+        # letting us keep a macOS 14 deployment target in build.sh.
+        run: sudo xcode-select -s /Applications/Xcode_26.2.app || sudo xcode-select -s /Applications/Xcode.app
 
       - name: Import signing certificate
         if: env.SIGN_IDENTITY != '' && env.IS_RELEASE_EVENT == 'true'
