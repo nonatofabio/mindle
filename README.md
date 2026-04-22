@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://nonatofabio.github.io/mindle/"><strong>Website</strong></a> &bull;
   <a href="#install">Install</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#keyboard-shortcuts">Shortcuts</a> &bull;
