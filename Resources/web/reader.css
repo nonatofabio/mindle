@@ -264,11 +264,96 @@ pre, pre code { white-space: pre; }
   border-radius: 6px;
   text-align: center;
   overflow-x: auto;
+  cursor: zoom-in;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mindle-mermaid:hover {
+  border-color: var(--accent);
+  box-shadow: 0 8px 24px rgba(60, 40, 20, 0.08);
 }
 .mindle-mermaid svg {
   max-width: 100%;
   height: auto;
   display: inline-block;
+}
+
+/* Mermaid expand-to-modal */
+.mindle-mermaid-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+.mindle-mermaid-modal[hidden] { display: none; }
+.mindle-mermaid-modal.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mindle-mermaid-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 15, 10, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.mindle-mermaid-modal-paper {
+  position: relative;
+  max-width: 92vw;
+  max-height: 92vh;
+  margin: 4vh auto;
+  padding: 2.5rem 2.5rem;
+  background: var(--surface);
+  border-radius: 10px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  transform: scale(0.96);
+  transition: transform 0.22s ease;
+  overflow: auto;
+}
+.mindle-mermaid-modal.is-open .mindle-mermaid-modal-paper {
+  transform: scale(1);
+}
+
+.mindle-mermaid-modal-content .mindle-mermaid.is-expanded {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+  cursor: default;
+  text-align: center;
+}
+.mindle-mermaid-modal-content .mindle-mermaid svg {
+  width: 100%;
+  height: auto;
+  max-height: 78vh;
+}
+
+.mindle-mermaid-modal-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  font-family: inherit;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.mindle-mermaid-modal-close:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  transform: rotate(90deg);
 }
 
 .mindle-mermaid-error {

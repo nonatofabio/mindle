@@ -103,7 +103,11 @@
   };
 
   window.mindleSetFontScale = function (scale) {
-    document.documentElement.style.fontSize = (18 * scale) + "px";
+    // reader.css declares `html, body { font-size: 18px }`, giving body
+    // its own explicit rule that blocks html-level changes from cascading.
+    // Inline-style on body beats the stylesheet and carries through to
+    // everything inside the article.
+    document.body.style.fontSize = (18 * scale) + "px";
   };
 
   window.mindleSetAnnotations = function (list) {
@@ -209,12 +213,56 @@
   });
 
   doc.addEventListener("click", (ev) => {
-    const m = ev.target.closest("mark.mindle-hl");
-    if (!m) return;
-    const id = m.dataset.annId;
-    if (!id) return;
-    postToSwift("annotationClicked", { id: id });
+    const hl = ev.target.closest("mark.mindle-hl");
+    if (hl) {
+      const id = hl.dataset.annId;
+      if (id) postToSwift("annotationClicked", { id: id });
+      return;
+    }
+    const mm = ev.target.closest(".mindle-mermaid");
+    if (mm) {
+      openMermaidModal(mm);
+      return;
+    }
   });
+
+  // -------- Mermaid click-to-expand modal --------
+  function ensureMermaidModal() {
+    let modal = document.getElementById("mindle-mermaid-modal");
+    if (modal) return modal;
+    modal = document.createElement("div");
+    modal.id = "mindle-mermaid-modal";
+    modal.className = "mindle-mermaid-modal";
+    modal.innerHTML =
+      '<div class="mindle-mermaid-modal-backdrop"></div>' +
+      '<div class="mindle-mermaid-modal-paper">' +
+      '  <button class="mindle-mermaid-modal-close" aria-label="Close diagram">×</button>' +
+      '  <div class="mindle-mermaid-modal-content"></div>' +
+      '</div>';
+    document.body.appendChild(modal);
+    const dismiss = () => {
+      modal.classList.remove("is-open");
+      setTimeout(() => { modal.hidden = true; }, 250);
+    };
+    modal.querySelector(".mindle-mermaid-modal-backdrop").addEventListener("click", dismiss);
+    modal.querySelector(".mindle-mermaid-modal-close").addEventListener("click", dismiss);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.classList.contains("is-open")) dismiss();
+    });
+    return modal;
+  }
+
+  function openMermaidModal(sourceNode) {
+    const modal = ensureMermaidModal();
+    const content = modal.querySelector(".mindle-mermaid-modal-content");
+    // Clone the SVG so the original stays in the document.
+    content.innerHTML = "";
+    const clone = sourceNode.cloneNode(true);
+    clone.classList.add("is-expanded");
+    content.appendChild(clone);
+    modal.hidden = false;
+    requestAnimationFrame(() => modal.classList.add("is-open"));
+  }
 
   // -------- Unified render pipeline: annotations + search --------
 

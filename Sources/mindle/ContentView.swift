@@ -7,7 +7,10 @@ struct ContentView: View {
     var body: some View {
         let c = store.theme.colors
         ZStack {
-            c.background.ignoresSafeArea()
+            // No .ignoresSafeArea() here — letting the toolbar safe-area
+            // stay clear exposes macOS's default unified-toolbar material
+            // (the translucent "glass" on modern Macs).
+            c.background
 
             if store.fileURL == nil {
                 EmptyStateView()
@@ -30,6 +33,7 @@ struct ContentView: View {
             ToolbarItem(placement: .navigation) {
                 Button { store.openWithPanel() } label: {
                     Image(systemName: "doc.text")
+                        .foregroundStyle(c.text)
                 }
                 .help("Open a Markdown file (⌘O)")
             }
@@ -82,16 +86,19 @@ struct ContentView: View {
 
                 Button { store.fontScale = max(0.75, store.fontScale - 0.05) } label: {
                     Image(systemName: "textformat.size.smaller")
+                        .foregroundStyle(c.text)
                 }
                 .help("Decrease text size (⌘-)")
 
                 Button { store.fontScale = min(1.6, store.fontScale + 0.05) } label: {
                     Image(systemName: "textformat.size.larger")
+                        .foregroundStyle(c.text)
                 }
                 .help("Increase text size (⌘+)")
 
                 Button { store.toggleTheme() } label: {
                     Image(systemName: themeIcon(store.theme))
+                        .foregroundStyle(c.text)
                 }
                 .help("Cycle theme — light / sepia / dark (⌘⇧T)")
 
