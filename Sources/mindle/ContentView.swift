@@ -6,11 +6,13 @@ struct ContentView: View {
 
     var body: some View {
         let c = store.theme.colors
+        // The themed fill needs to extend through the toolbar safe
+        // area so the unified-toolbar's translucent material picks up
+        // the theme color as its backdrop. Without .ignoresSafeArea()
+        // the material bleeds to the window's system-gray backing and
+        // the toolbar reads as a flat dark bar.
         ZStack {
-            // No .ignoresSafeArea() here — letting the toolbar safe-area
-            // stay clear exposes macOS's default unified-toolbar material
-            // (the translucent "glass" on modern Macs).
-            c.background
+            c.background.ignoresSafeArea()
 
             if store.fileURL == nil {
                 EmptyStateView()
