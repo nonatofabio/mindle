@@ -10,7 +10,7 @@ APP_BUNDLE="build/${APP_NAME}.app"
 BIN="build/${BIN_NAME}"
 
 # User-facing (marketing) version — bump this when cutting a release.
-SHORT_VERSION="1.2.0"
+SHORT_VERSION="1.2.1"
 # Monotonic build number derived from commit history, so the About
 # panel shows a distinct "Version X.Y.Z (N)" instead of "(X.Y.Z)".
 # Falls back to 1 when git history isn't available (shallow clone).
