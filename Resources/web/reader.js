@@ -45,6 +45,28 @@
   let renderedHTML = "";
   let searchState = { query: "", current: 0, total: 0, matchSets: [] };
   let baseDir = "";   // absolute filesystem path of the current file's parent dir
+  let applyGeneration = 0;   // bumped on every applyAll — guards async mermaid passes
+
+  // -------- Mermaid setup --------
+  function themeToMermaid(theme) {
+    if (theme === "dark") return "dark";
+    if (theme === "sepia") return "neutral";
+    return "default";
+  }
+
+  function initMermaid() {
+    if (!window.mermaid) return;
+    const theme = document.documentElement.dataset.theme || "sepia";
+    try {
+      window.mermaid.initialize({
+        startOnLoad: false,
+        theme: themeToMermaid(theme),
+        securityLevel: "strict",
+        fontFamily: 'ui-serif, "New York", "Iowan Old Style", "Palatino", Georgia, serif'
+      });
+    } catch (_) {}
+  }
+  initMermaid();
 
   // -------- Swift <-> JS bridge --------
   function postToSwift(channel, payload) {
@@ -71,6 +93,13 @@
 
   window.mindleSetTheme = function (theme) {
     document.documentElement.dataset.theme = theme;
+    // Mermaid diagrams bake the theme into their SVG at render time, so
+    // a theme switch requires re-running the renderer. Skip the work
+    // when the current document has no mermaid content.
+    if (window.mermaid && doc.querySelector(".mindle-mermaid, code.language-mermaid, code.language-mmd")) {
+      initMermaid();
+      applyAll();
+    }
   };
 
   window.mindleSetFontScale = function (scale) {
@@ -95,10 +124,10 @@
     return captureSelection();
   };
 
-  window.mindleSearch = function (query) {
+  window.mindleSearch = async function (query) {
     searchState.query = query || "";
     searchState.current = 0;
-    applyAll();
+    await applyAll();
     if (searchState.total > 0) {
       searchState.current = 1;
       applyCurrentMatchClass();
@@ -189,9 +218,15 @@
 
   // -------- Unified render pipeline: annotations + search --------
 
-  function applyAll() {
+  async function applyAll() {
+    const gen = ++applyGeneration;
     doc.innerHTML = renderedHTML;
     rewriteImages();
+    await renderMermaidBlocks();
+    // If a newer applyAll started while we were rendering mermaid,
+    // bail — that pass will install its own annotations and search.
+    if (gen !== applyGeneration) return;
+
     currentMarkSets.clear();
     searchState.matchSets = [];
     searchState.total = 0;
@@ -207,6 +242,59 @@
     }
 
     applySearchMarks();
+  }
+
+  async function renderMermaidBlocks() {
+    if (!window.mermaid) return;
+
+    // Sweep any strays from a prior pass: mermaid drops temp SVGs at
+    // document body level during render and doesn't always clean up
+    // (especially on parse errors). Anything at body scope that isn't
+    // our article or a script is leftover debris.
+    Array.from(document.body.children).forEach(el => {
+      if (el !== doc && el.tagName !== "SCRIPT") el.remove();
+    });
+
+    const blocks = Array.from(doc.querySelectorAll("pre > code.language-mermaid, pre > code.language-mmd"));
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      const pre = block.parentElement;
+      if (!pre) continue;
+      const source = block.textContent || "";
+      const id = "mindle-mermaid-" + Date.now() + "-" + i;
+
+      // Validate before rendering. mermaid.render() on bad input drops
+      // an orphan bomb-icon error SVG into the DOM — parse lets us
+      // reject cleanly without ever invoking the renderer.
+      let valid = true;
+      try {
+        const parsed = await window.mermaid.parse(source, { suppressErrors: true });
+        if (parsed === false || parsed == null) valid = false;
+      } catch (_) {
+        valid = false;
+      }
+
+      if (!valid) {
+        const note = document.createElement("div");
+        note.className = "mindle-mermaid-error";
+        note.textContent = "Mermaid couldn't render this diagram — check the syntax.";
+        pre.replaceWith(note);
+        continue;
+      }
+
+      try {
+        const { svg } = await window.mermaid.render(id, source);
+        const wrap = document.createElement("div");
+        wrap.className = "mindle-mermaid";
+        wrap.innerHTML = svg;
+        pre.replaceWith(wrap);
+      } catch (err) {
+        const note = document.createElement("div");
+        note.className = "mindle-mermaid-error";
+        note.textContent = "Mermaid couldn't render this diagram: " + (err && err.message ? err.message : String(err));
+        pre.replaceWith(note);
+      }
+    }
   }
 
   // -------- Images: rewrite src, block remote, handle broken --------

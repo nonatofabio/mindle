@@ -90,7 +90,7 @@ Annotations use a **text + context** anchoring strategy (inspired by [Hypothes.i
 - [ ] **Search** (`⌘F`) — find-in-document with match highlighting
 - [x] **Export annotations** — Markdown or JSON dump of all highlights and notes
 - [ ] **Multiple files** — tabbed or sidebar-based file browser
-- [ ] **Mermaid diagrams** — render `mermaid` fenced code blocks inline
+- [x] **Mermaid diagrams** — render `mermaid` fenced code blocks inline
 - [x] **Image support** — resolve relative image paths from the `.md` file's directory
 - [ ] **Print / PDF export** — `⌘P` with theme-aware print stylesheet
 - [ ] **Homebrew cask** — `brew install --cask mindle`
