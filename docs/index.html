@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mindle — A quiet place to read Markdown</title>
+  <meta name="description" content="A native macOS Markdown reader. Serif, warm, local. No Electron, no subscriptions, no network.">
+  <link rel="canonical" href="https://nonatofabio.github.io/mindle/">
+
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://nonatofabio.github.io/mindle/">
+  <meta property="og:title" content="Mindle — A quiet place to read Markdown">
+  <meta property="og:description" content="A native macOS Markdown reader. Serif, warm, local.">
+  <meta property="og:image" content="https://nonatofabio.github.io/mindle/assets/logo.svg">
+
+  <!-- Satoshi reserved for the {fnp} signature -->
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="container nav-content">
+      <a href="#" class="nav-logo" aria-label="Mindle home">
+        <img src="assets/logo.svg" alt="" class="nav-logo-mark">
+        <span class="nav-logo-text">Mindle</span>
+      </a>
+      <div class="nav-links">
+        <a href="#preview">Read</a>
+        <a href="#features">Features</a>
+        <a href="#shortcuts">Shortcuts</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/nonatofabio/mindle" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="container hero-content">
+      <img src="assets/logo.svg" alt="" class="hero-logo" id="hero-logo">
+      <h1>Mindle</h1>
+      <p class="tagline">A quiet place to read Markdown.</p>
+      <p class="subtitle">A native macOS reader for your <code>.md</code> files. Serif, warm, local.</p>
+      <div class="hero-links">
+        <a href="https://github.com/nonatofabio/mindle/releases/latest/download/Mindle.dmg" class="btn btn-primary">Download for macOS</a>
+        <a href="https://github.com/nonatofabio/mindle" class="btn btn-secondary">View on GitHub</a>
+      </div>
+    </div>
+    <a href="#preview" class="scroll-indicator" aria-label="Scroll to preview">
+      <span>Read</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M12 5v14M5 12l7 7 7-7"/>
+      </svg>
+    </a>
+  </header>
+
+  <section id="preview" class="section preview">
+    <div class="container">
+      <h2>Read without noise</h2>
+      <div class="reader-mock" role="presentation">
+        <article>
+          <h3>On reading</h3>
+          <p>There is a rhythm to a book that a screen rarely knows.</p>
+          <p>
+            <mark class="mindle-hl has-note" data-note="reading as a physical act">The pace of the eye</mark>,
+            the weight of the hand, the soft margin of a page about to turn —
+            these are the small things that make a reader of you.
+          </p>
+          <p>
+            Mindle returns some of that: a serif face, a warm ground,
+            <mark class="mindle-hl">room at the edges</mark>,
+            and nothing in the way.
+          </p>
+        </article>
+        <aside class="note-card" aria-label="Example note">
+          <span class="note-label">Note</span>
+          <p>Reading as a physical act — something Mindle is trying to give back.</p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="section features">
+    <div class="container">
+      <h2>Features</h2>
+      <div class="feature-grid">
+
+        <div class="feature-card">
+          <h3>Highlight &amp; Annotate</h3>
+          <p>Select any passage, press <kbd>⌘⇧H</kbd> to highlight or <kbd>⌘⇧N</kbd> to attach a note. Persisted per-file in a hidden sidecar next to your markdown.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Full GitHub-Flavored Markdown</h3>
+          <p>Tables, task lists, footnotes, strikethrough, syntax-highlighted code, emoji, nested lists, raw HTML. Rendered locally — no network round-trip.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Find in Document</h3>
+          <p>Live search with match count and navigation. <kbd>⌘F</kbd> opens the bar, <kbd>⌘G</kbd> and <kbd>⌘⇧G</kbd> step between matches.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>File Browser</h3>
+          <p>A scoped sidebar tree of every <code>.md</code> and <code>.txt</code> in your current folder. Never escapes upward. Toggle with <kbd>⌘⇧F</kbd>.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Images</h3>
+          <p>Relative, absolute, <code>file://</code>, and <code>data:</code> URLs all resolve. Remote <code>http(s)</code> images are blocked — no tracking pixels.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Three Themes</h3>
+          <p>Light, Sepia, Dark. Cycle with <kbd>⌘⇧T</kbd>. Typography controls via <kbd>⌘+</kbd> and <kbd>⌘-</kbd>. The theme sticks per-file.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <section id="shortcuts" class="section shortcuts">
+    <div class="container">
+      <h2>Keyboard</h2>
+      <table class="shortcut-table">
+        <tbody>
+          <tr><td><kbd>⌘O</kbd></td><td>Open a file</td></tr>
+          <tr><td><kbd>⌘F</kbd></td><td>Find in document</td></tr>
+          <tr><td><kbd>⌘G</kbd> / <kbd>⌘⇧G</kbd></td><td>Next / previous match</td></tr>
+          <tr><td><kbd>⌘⇧E</kbd></td><td>Export annotations (Markdown or JSON)</td></tr>
+          <tr><td><kbd>⌘⇧H</kbd></td><td>Highlight selection</td></tr>
+          <tr><td><kbd>⌘⇧N</kbd></td><td>Add note to selection</td></tr>
+          <tr><td><kbd>⌘⇧A</kbd></td><td>Toggle annotations sidebar</td></tr>
+          <tr><td><kbd>⌘⇧F</kbd></td><td>Toggle files sidebar</td></tr>
+          <tr><td><kbd>⌘⇧T</kbd></td><td>Cycle theme (light / sepia / dark)</td></tr>
+          <tr><td><kbd>⌘+</kbd> / <kbd>⌘-</kbd></td><td>Increase / decrease font size</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="install" class="section install">
+    <div class="container">
+      <h2>Install</h2>
+      <div class="install-grid">
+
+        <div class="install-card">
+          <h3>Download</h3>
+          <p class="install-lead">Signed &amp; notarized by Apple. No Terminal workaround, no Gatekeeper prompt.</p>
+          <a href="https://github.com/nonatofabio/mindle/releases/latest/download/Mindle.dmg" class="btn btn-primary btn-large">Download Mindle.dmg</a>
+          <p class="install-note">Drag <strong>Mindle</strong> into <strong>Applications</strong>, then open.</p>
+        </div>
+
+        <div class="install-card">
+          <h3>Build from source</h3>
+          <p class="install-lead">macOS 14+ and <code>xcode-select --install</code>.</p>
+<pre><code>git clone https://github.com/nonatofabio/mindle.git
+cd mindle
+./build.sh
+open build/Mindle.app</code></pre>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container footer-content">
+      <p class="footer-meta">© 2026 Fabio Nonato de Paula · <a href="https://github.com/nonatofabio/mindle/blob/main/LICENSE">MIT License</a></p>
+      <div class="footer-links">
+        <a href="https://buymeacoffee.com/nonatofabio" target="_blank" rel="noopener" class="footer-link">☕ Buy me a coffee</a>
+        <a href="https://github.com/nonatofabio/mindle" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+        <a href="https://nonatofabio.github.io/" target="_blank" rel="noopener" class="footer-signature" title="More from Fabio Nonato">{fnp}</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Easter egg: the origin manifesto, rendered in Mindle's own voice -->
+  <div id="manifesto" class="manifesto" hidden role="dialog" aria-modal="true" aria-labelledby="manifesto-title">
+    <div class="manifesto-backdrop" data-manifesto-close></div>
+    <div class="manifesto-paper">
+      <button class="manifesto-close" data-manifesto-close aria-label="Close manifesto">×</button>
+      <header class="manifesto-header">
+        <h1 id="manifesto-title">Dive Into Markdown</h1>
+        <p class="manifesto-byline">by John Gruber · originally published on <a href="https://daringfireball.net/2004/03/dive_into_markdown" target="_blank" rel="noopener">daringfireball.net</a>, 19 March 2004</p>
+      </header>
+      <article class="manifesto-body">
+        <p><em>“Sometimes the truth of a thing is not so much in the think of it,
+but in the feel of it.”</em>  —<strong>Stanley Kubrick</strong></p>
+
+        <h2>Point No. 1</h2>
+
+        <p>Here’s a question: When was the last time you listened to an argument,
+and on the basis of that argument, changed your mind? Not just about
+something you hadn’t really given much thought to, but something
+which, prior to considering the argument in question, you felt quite
+certain regarding your original stance.</p>
+
+        <p>In other words, when was the last time you realized you were
+<em>completely wrong</em> on a matter of opinion?</p>
+
+        <p>If your answer is “never”, or even “a long time ago”, is it because
+you’re always right?</p>
+
+        <p>Here’s one of mine.</p>
+
+        <p>Back in January, there was a debate regarding the application of
+Postel’s Law in software that parses XML syndicated feeds (formats
+such as <a href="http://blogs.law.harvard.edu/tech/rss">RSS</a> and <a href="http://www.atomenabled.org/">Atom</a>). The nutshell synopsis is that <a href="http://www.ibiblio.org/pub/docs/rfc/rfc793.txt">Postel’s
+Law states</a>: “be conservative in what you do, be liberal in
+what you accept from others”; but the <a href="http://www.w3.org/TR/2004/REC-xml-20040204/#dt-fatal">XML specification clearly
+states</a>: “Once a fatal error is detected, however, the processor
+MUST NOT continue normal processing (i.e., it MUST NOT continue to
+pass character data and information about the document’s logical
+structure to the application in the normal way).”</p>
+
+        <p>So, what should software that parses XML syndicated feeds do? Follow
+Postel’s Law, and be liberal about errors in a feed? Or follow the XML
+spec, and stop processing the feed at the first fatal error?</p>
+
+        <p><a href="http://inessential.com/?comments=1&amp;postid=2770">Brent Simmons</a> (developer of NetNewsWire, the leading Mac OS
+syndicated newsreader) and <a href="http://nick.typepad.com/blog/2004/01/feeddemon_and_w_1.html">Nick Bradbury</a> (developer of FeedDemon,
+the leading Windows syndicated newsreader) both decided that their
+software would be strict when parsing Atom XML feeds. Many other smart
+people agreed with them.</p>
+
+        <p>I think it’s fair to say the “clients should be strict” argument
+boiled down to this:</p>
+
+        <ol>
+          <li><p>Valid, well-formed XML is better than invalid XML.</p></li>
+          <li><p>It’s not that hard to write software that produces valid,
+well-formed XML. (Or in the <a href="http://www.tbray.org/ongoing/When/200x/2004/01/11/PostelPilgrim">words of Tim Bray</a>: “Anyone who can’t
+make a syndication feed that’s well-formed XML is an incompetent
+fool.”)</p></li>
+          <li><p>If the leading client apps for <em>consuming</em> XML feeds required
+valid and well-formed XML, it would put pressure on apps that
+<em>produce</em> feeds not to generate bad XML.</p></li>
+        </ol>
+
+        <p>I agree with all three points, and thus, I was firmly in the “clients
+ought to be strict about parsing” camp.</p>
+
+        <p>But then I read <a href="http://web.archive.org/web/20060420051806/http://diveintomark.org/archives/2004/01/14/thought_experiment">Mark Pilgrim’s “Thought Experiment”</a>. Pilgrim is
+not just a proponent of liberal feed parsing — he’s put his code
+where his mouth is and written the very-well-regarded open source
+<a href="https://pypi.python.org/pypi/feedparser">Universal Feed Parser</a>.</p>
+
+        <p>Pilgrim’s key point, at least as I saw it, was this: if you’re writing
+software that consumes XML feeds, and your parser isn’t at least
+somewhat liberal, your users will suffer when they encounter a
+malformed feed. And, eventually, your users <em>will</em> encounter malformed
+feeds. When that happens, the producer of the broken feed may well be
+at fault, but it’s the users of your software who will suffer by
+enforced strictness at the client end.</p>
+
+        <p>I read this, I engaged in his thought experiment, and I realized that
+I was completely wrong, and he was right. (Simmons changed his
+mind as well; see follow-ups <a href="http://inessential.com/2004/01/16/compromise_on_atom_and_xml">here</a> and <a href="http://inessential.com/2004/01/16/why_the_compromise">here</a>.)</p>
+
+        <p>Solely on the basis of his argument in “<a href="http://web.archive.org/web/20060420051806/http://diveintomark.org/archives/2004/01/14/thought_experiment">Thought Experiment</a>”,
+Pilgrim persuaded me that I was wrong. But what’s interesting is that
+in doing so, <em>he did not refute a single one of the three points that
+led me to side with the “be strict” camp in the first place.</em></p>
+
+        <p>Thus, Point No. 1: When I end up changing my mind on a matter of
+opinion, it usually is <em>not</em> because I had the facts wrong; it’s
+because I was looking at the wrong facts.</p>
+
+        <hr>
+
+        <h2>Point No. 2</h2>
+
+        <p>The basic idea behind all weblog software — reduced to a nutshell — seems so simple in retrospect. Rather than managing a web site as a
+collection of <em>pages</em>, you manage a collection of <em>posts</em>, and the
+weblog software takes care of turning the posts into pages for you.</p>
+
+        <p>The appeal of weblog software for non-nerds is obvious. Without it,
+they wouldn’t be able to publish their sites.</p>
+
+        <p>But what’s the appeal of weblog software to nerds — HTML experts who
+are fully capable of hand-coding a weblog with HTML files? Sure, there
+are a few <a href="http://zeldman.com/">hand-coding holdouts</a>, but for the most part, even the
+most <a href="http://simplebits.com/">knowledgeable</a> and <a href="http://stopdesign.com/">renowned</a> web developers in the
+world are using weblogging software packages. (Or they’ve <a href="http://waferbaby.com/">written
+their own</a> publishing software.)</p>
+
+        <p>The answer is convenience and flexibility. Weblog software takes away
+an inordinate amount of the monotony involved with updating a web
+site. I must profess — I personally didn’t figure this out until
+2002, a few months before I launched Daring Fireball. The fact that I
+was capable of hand-coding an entire web site — and in fact
+considered hand-coding <em>easy</em> — blinded me to the fact that it
+involved an awful lot of repetitive monkey work.</p>
+
+        <p>Here’s what happens every time I post a new article to Daring Fireball:</p>
+
+        <ol>
+          <li>The new post appears at the top of the home page (and the oldest
+post on the home page is removed).</li>
+          <li>The new post gets a permanent home on a page by itself.</li>
+          <li>My RSS feed is updated with the new post.</li>
+          <li>The title and a link to the new page are added to my <a href="https://daringfireball.net/archives">Archives</a> page.</li>
+          <li>The title and a link to the new page are added as a “Next entry”
+pointer on the page for the previous entry.</li>
+        </ol>
+
+        <p>I take just one action — posting a new article — and Movable Type
+creates one new file and updates four others. None of these tasks
+would be <em>difficult</em> to accomplish by hand. Mostly, it’d be a
+copy-and-paste job. But it sure would be monotonous — and even though
+it admittedly would not be <em>hard</em>, there would still be a high chance
+I’d make mistakes. I’d make them because I’d get bored or simply
+forget to perform one of the steps. Monotonous repetitive tasks are
+exactly what computers are good at, and what humans are bad at.</p>
+
+        <p>Plus, the encapsulation feels natural. Writing a new article — or
+making changes to an existing one — <em>feels</em> like it ought to be one
+task. It’s the article I want to edit, not the individual pages where
+it appears.</p>
+
+        <p>Thus, Point No. 2: Just because something isn’t difficult doesn’t mean
+it’s the way it ought to be done.</p>
+
+        <hr>
+
+        <h2>Wherein I Attempt to Tie Together Points No. 1 and 2 to Make the Case for Markdown</h2>
+
+        <p>Let’s take a step back. Above, I wrote that weblog software allows you
+to manage a web site as a collection of posts instead of pages.</p>
+
+        <p>But so what is a <em>post</em>?</p>
+
+        <p>The conventional wisdom is that a post is a snippet of HTML. Not a
+full HTML document, just a snippet of HTML-formatted text — the
+weblog software takes care of forming full HTML (and/or XML)
+documents. Your weblog templates contain all the tags related to
+document structure — <code>&lt;html&gt;</code>, <code>&lt;head&gt;</code>, <code>&lt;body&gt;</code>, etc. — and they
+have slots for where your posts will go. When you publish, your weblog
+software takes your posts, as snippets of HTML, and plugs them into
+your HTML templates.</p>
+
+        <p>For the full first year I published Daring Fireball, from August 2002
+to around August of last year, I was perfectly happy to buy into this
+post-as-snippet-of-HTML concept. I never really even considered an
+alternative. Everything I wrote for Daring Fireball, I wrote formatted
+as valid HTML. (Actually <em>XHTML</em>, but the difference is irrelevant
+here.)</p>
+
+        <p>Except, of course, <em>snippets</em> of HTML can’t be validated, because HTML
+is a <em>document</em> format. You can write <em>well-formed</em> snippets of HTML — making sure you close all your tags and escape all your ampersands
+and angle brackets — but you can’t pass a snippet of HTML to the <a href="http://validator.w3.org/">W3C
+HTML Validator</a>, nor can you pass it through BBEdit’s HTML syntax
+checker.</p>
+
+        <p>My intended workflow:</p>
+
+        <ol>
+          <li>Write, edit, revise in BBEdit.</li>
+          <li>When it’s ready, log into MT’s web interface, paste
+the article, and publish.</li>
+        </ol>
+
+        <p>But my actual workflow looked like this:</p>
+
+        <ol>
+          <li>Write in BBEdit.</li>
+          <li>Preview in a browser.</li>
+          <li>Switch back to BBEdit for revisions.</li>
+          <li>Repeat until done.</li>
+          <li>Log into MT, paste the article, publish.</li>
+        </ol>
+
+        <p>Eventually, it dawned on me: <em>this is madness</em>. The primary advantage
+to using a computer for writing is the immediacy of editing. Write,
+read, revise, all in the same window, all in the same mode.</p>
+
+        <p>The argument <em>for</em> writing text in raw HTML — the argument I used
+myself for years — is that HTML is not hard. <em>I still agree with
+this.</em> HTML is pretty easy to learn, and once learned, easy to apply.
+Full-blown web development? That’s hard. But the basic tags and rules
+of HTML — enough HTML to be capable of composing weblog entries in
+raw HTML — that’s easy.</p>
+
+        <p>But there’s a reason why plain text browsers like <a href="http://lynx.browser.org/">Lynx</a> don’t just show
+you the raw HTML source code. It’s simply not meant to be a readable
+format. Doesn’t it strike you as odd to write in a format that isn’t
+readable? Suddenly, it struck me as absurd.</p>
+
+        <p>Application of Point No. 1: I’m not arguing that raw HTML is hard. I
+agree that it’s easy. I’m arguing an orthogonal point — that what
+it’s easy for is tagging a document with markup, <em>not</em> reading and
+composing prose.</p>
+
+        <p>Application of Point No. 2: Even if you insist that it’s easy to
+compose text in raw HTML, isn’t it a chore? Isn’t it tedious to write
+“<code>AT&amp;amp;T</code>” instead of just “<code>AT&amp;T</code>”? (Not to mention the necessity
+of encoding ampersands within URLs?)</p>
+
+        <p>It’s 2004. Shouldn’t your computer be able to determine where you’ve
+written paragraphs and sub-heads?</p>
+
+        <p>And don’t tell me that Movable Type’s “Convert Line Breaks” feature
+does that for you. MT 2.661’s “Convert Line Breaks” will turn these
+two lines of input:</p>
+
+<pre><code>&lt;h2&gt;This is a header.&lt;/h2&gt;
+
+This is a paragraph.
+</code></pre>
+
+        <p>Into this:</p>
+
+<pre><code>&lt;p&gt;&lt;h2&gt;This is a header.&lt;/h2&gt;&lt;/p&gt;
+
+&lt;p&gt;This is a paragraph.&lt;/p&gt;
+</code></pre>
+
+        <p>Which is just silly. TypePad is apparently smart enough not to wrap
+spurious <code>&lt;p&gt;</code> tags around block-level HTML tags — so MT 3.0
+probably will be too — but it still doesn’t alleviate any of the
+other tedium or visual clutter of raw HTML.</p>
+
+        <p>Why is it that desktop weblog editors need to provide “preview” modes?
+You don’t need to “preview” an email before you send it — you write
+it, you read it, you edit it, right there.</p>
+
+        <p>In fact, I love writing email. Email is my favorite writing medium.
+I’ve sent over 16,000 emails in the last five years. The conventions
+of plain text email allow me to express myself clearly and precisely,
+without ever getting in my way.</p>
+
+        <p>Thus, Markdown. Email-style writing for the web.</p>
+
+        <p>Most other text-to-HTML filters are based on the premise that HTML
+tags are difficult, and so they go out of their way to replace HTML
+tags with their own, which end up being neither “easier” nor more
+readable than HTML. And at the same time, they end up making it hard
+to drop into manual and just use raw HTML when you really need to.</p>
+
+        <p>Other filters are aimed at replacing HTML. Markdown is aimed
+elsewhere. It’s aimed at a sweet spot, between making it easy to use
+real HTML when you need it, and letting you just write plain text for
+anything where it’s sensible and obvious to do so.</p>
+
+        <p>The tags that most weblog apps provide shortcuts for — italics, bold,
+links, paragraphs, blockquotes — are the ones you shouldn’t need to
+worry about “tagging” in the first place. Making it easy to insert
+these tags does nothing to make it easier to write, and worse, makes
+your composition harder to read.</p>
+
+        <p>But when you do need to use inline raw HTML — say, to create a
+specially-formatted ordered list using custom class attributes — you
+ought to be able to just drop into HTML. No escapes, no special
+mode-switching markers, just use the tags. Markdown lets you do this,
+because it’s designed specifically and only as a pre-processor for
+HTML.</p>
+
+        <p>(If you really do want to translate a Markdown-formatted document to
+some non-HTML format, just translate it to HTML first, then use an
+existing HTML-to-whatever filter.)</p>
+
+        <p>And while I do think HTML is easy, there’s one particular area where
+it is in fact quite tricky, if not downright difficult: using HTML
+markup to write <em>about</em> HTML markup is a major pain in the ass. When
+you write about code, you should only have to worry about the example
+code itself — not about escaping every single instance of <code>&lt;</code> and <code>&amp;</code>
+with <code>&amp;lt;</code> and <code>&amp;amp;</code>.</p>
+
+        <p>In addition to making it easy to include inline HTML tags in a
+document, Markdown also makes it easy to include <em>example</em> HTML tags
+within code spans and code blocks.</p>
+
+        <h2>Feel vs. Think</h2>
+
+        <p>The typographic constraints of plain text — a single typeface, in a
+single size, with no true italics or bold — are very much similar to
+the constraints of a typewriter. Imagine that someone was nice enough
+to buy you a gift: an original typewritten manuscript for a classic
+novel. Let’s say Fitzgerald’s “The Great Gatsby”. You could sit down
+with this manuscript and read it, straight through, and get pretty
+much the same reading experience as you would when reading it in the
+form of a nicely bound and typeset book. Yes, it would all be set in
+the typewriter’s smudgy fixed-width Courier-esque typeface, with
+underlining instead of italics, etc. — but the words would still
+flow, from page to mind, just as Fitzgerald intended.</p>
+
+        <p>The quote from Stanley Kubrick I used to start this article is one of
+my very favorites. When you write and read text that’s marked-up with
+HTML tags, it’s forcing you to concentrate on the <em>think of it</em>. It’s
+the <em>feel of it</em> that I want Markdown-formatted text to convey.</p>
+      </article>
+      <footer class="manifesto-footer">
+        <p>Preserved here as a small tribute. Read the <a href="https://daringfireball.net/2004/03/dive_into_markdown" target="_blank" rel="noopener">original on daringfireball.net</a>.</p>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const logo    = document.getElementById('hero-logo');
+      const overlay = document.getElementById('manifesto');
+      const paper   = overlay.querySelector('.manifesto-paper');
+
+      // External links inside the manifesto should open in a new tab.
+      overlay.querySelectorAll('.manifesto-body a[href^="http"]').forEach(a => {
+        a.target = '_blank';
+        a.rel = 'noopener';
+      });
+
+      function open() {
+        overlay.hidden = false;
+        document.documentElement.style.overflow = 'hidden';
+        requestAnimationFrame(() => overlay.classList.add('is-open'));
+        paper.scrollTop = 0;
+      }
+      function close() {
+        overlay.classList.remove('is-open');
+        // Wait for the transition to finish before truly hiding.
+        setTimeout(() => {
+          overlay.hidden = true;
+          document.documentElement.style.overflow = '';
+        }, 280);
+      }
+
+      logo.addEventListener('click', (e) => { e.preventDefault(); open(); });
+
+      overlay.addEventListener('click', (e) => {
+        if (e.target.matches('[data-manifesto-close]')) close();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !overlay.hidden) close();
+      });
+    })();
+  </script>
+
+</body>
+</html>

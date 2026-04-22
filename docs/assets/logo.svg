@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <!-- Rounded-square background with warm sepia gradient -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#F7EBD1"/>
+      <stop offset="100%" stop-color="#E9D6A8"/>
+    </linearGradient>
+    <linearGradient id="hl" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"  stop-color="#F3B04A"/>
+      <stop offset="100%" stop-color="#D97A2A"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#bg)"/>
+
+  <!-- Highlighter swipe behind the letter -->
+  <rect x="176" y="600" width="672" height="96" rx="24" ry="24" fill="url(#hl)" opacity="0.92"/>
+
+  <!-- Serif "m" — a classic bookish mark -->
+  <g fill="#2E231A">
+    <text x="512" y="720"
+          font-family="'Iowan Old Style','Palatino','Times New Roman',serif"
+          font-size="720"
+          font-weight="700"
+          text-anchor="middle">m</text>
+  </g>
+
+  <!-- Subtle page corner fold to hint "document" -->
+  <path d="M 816 176 L 848 176 L 848 240 L 816 240 Z M 816 176 L 848 208 L 816 208 Z"
+        fill="#2E231A" opacity="0.08"/>
+</svg>
