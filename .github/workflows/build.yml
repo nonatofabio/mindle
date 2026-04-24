@@ -251,12 +251,29 @@ jobs:
             build/Mindle.dmg
           if-no-files-found: ignore
 
+      - name: Prepare release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: notes
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          NOTES_FILE="docs/releases/${TAG}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "hand_written=true" >> "$GITHUB_OUTPUT"
+            echo "body_path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+            echo "Using hand-written release notes from $NOTES_FILE"
+          else
+            echo "hand_written=false" >> "$GITHUB_OUTPUT"
+            echo "body_path=" >> "$GITHUB_OUTPUT"
+            echo "No $NOTES_FILE found; falling back to auto-generated notes."
+          fi
+
       - name: Create GitHub Release (signed DMG)
         if: startsWith(github.ref, 'refs/tags/v') && env.SIGN_IDENTITY != ''
         uses: softprops/action-gh-release@v2
         with:
           files: build/Mindle.dmg
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.body_path }}
+          generate_release_notes: ${{ steps.notes.outputs.hand_written != 'true' }}
           prerelease: ${{ contains(github.ref, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -266,7 +283,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: build/Mindle.app.zip
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.body_path }}
+          generate_release_notes: ${{ steps.notes.outputs.hand_written != 'true' }}
           prerelease: ${{ contains(github.ref, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
