@@ -52,6 +52,9 @@ final class DocumentStore: ObservableObject {
     @Published var focusedAnnotation: UUID? = nil
     @Published var editingAnnotationID: UUID? = nil
 
+    // Bumped to trigger a PDF export in the WKWebView coordinator.
+    @Published var pdfExportRequestedAt: Date? = nil
+
     var hasSelection: Bool { !selectionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private var sidecarURL: URL? {
@@ -220,6 +223,15 @@ final class DocumentStore: ObservableObject {
 
     func jumpTo(id: UUID) {
         focusedAnnotation = id
+    }
+
+    // MARK: - PDF export
+
+    var canExportPDF: Bool { fileURL != nil }
+
+    func requestPDFExport() {
+        guard canExportPDF else { NSSound.beep(); return }
+        pdfExportRequestedAt = Date()
     }
 
     // MARK: - Search

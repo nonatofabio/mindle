@@ -156,6 +156,126 @@
     reportSearchResult();
   };
 
+  // -------- PDF export mode --------
+  // Called by the Swift side immediately before WKWebView.createPDF
+  // captures. The class toggles styling to white-paper / dark-text /
+  // no-UI-chrome. After that, any fixed-size "unbreakable" element
+  // (code blocks, mermaid diagrams) that would straddle a page
+  // boundary gets an extra margin-top injected to push it onto the
+  // next page. Reading scrollHeight at the end forces a final
+  // synchronous reflow and reports the now-padded content height.
+  const PDF_PAGE_HEIGHT = 792;
+  // Reasonable rendering bounds for a diagram on a Letter-ish page:
+  // enough width to be legible, enough height to fit on one page
+  // with room for a heading and some surrounding text.
+  const PDF_SVG_MAX_WIDTH = 440;
+  const PDF_SVG_MAX_HEIGHT = 520;
+  // Paragraphs, headings, and list items are included so text lines
+  // don't split mid-character at a page boundary. Pre + mermaid are
+  // the primary targets. Long blocks (> one page) still split because
+  // we can't help that without font-size hacks.
+  const PDF_UNBREAKABLE_SELECTOR =
+    "pre, .mindle-mermaid, blockquote, table, h1, h2, h3, h4, h5, h6, p, li";
+
+  window.mindleBeginPDFExport = function () {
+    document.documentElement.classList.add("mindle-print-mode");
+    void document.documentElement.offsetHeight;   // first reflow in new mode
+    constrainMermaidSVGs();
+    void document.documentElement.offsetHeight;   // settle svg size changes
+    reflowToAvoidPageBreaks();
+    void document.documentElement.offsetHeight;   // settle pushes
+    return document.documentElement.scrollHeight;
+  };
+
+  window.mindleEndPDFExport = function () {
+    restorePageBreakMargins();
+    restoreMermaidSVGs();
+    document.documentElement.classList.remove("mindle-print-mode");
+  };
+
+  // Mermaid SVGs have a viewBox but no explicit width/height, so
+  // browser sizing defaults to "fill container width" — which scales
+  // small diagrams up to page-content width, with text and shapes
+  // ballooning proportionally. Force explicit pixel dimensions
+  // computed from the viewBox aspect ratio, starting from the natural
+  // size and shrinking only if either dimension exceeds the max.
+  //
+  // setProperty(..., "important") is required because our stylesheet
+  // rule uses `width: auto !important; height: auto !important`, and
+  // inline styles without `!important` lose to external !important.
+  function constrainMermaidSVGs() {
+    for (const svg of document.querySelectorAll(".mindle-mermaid svg")) {
+      const vb = svg.viewBox && svg.viewBox.baseVal;
+      if (!vb || !vb.width || !vb.height) continue;
+
+      let width = vb.width;
+      let height = vb.height;
+
+      if (height > PDF_SVG_MAX_HEIGHT) {
+        width *= PDF_SVG_MAX_HEIGHT / height;
+        height = PDF_SVG_MAX_HEIGHT;
+      }
+      if (width > PDF_SVG_MAX_WIDTH) {
+        height *= PDF_SVG_MAX_WIDTH / width;
+        width = PDF_SVG_MAX_WIDTH;
+      }
+
+      svg.dataset.mindlePDFSized = "1";
+      svg.style.setProperty("width", width + "px", "important");
+      svg.style.setProperty("height", height + "px", "important");
+    }
+  }
+
+  function restoreMermaidSVGs() {
+    for (const svg of document.querySelectorAll(".mindle-mermaid svg")) {
+      if (svg.dataset.mindlePDFSized) {
+        svg.style.removeProperty("height");
+        svg.style.removeProperty("width");
+        delete svg.dataset.mindlePDFSized;
+      }
+    }
+  }
+
+  function reflowToAvoidPageBreaks() {
+    const elements = document.querySelectorAll(PDF_UNBREAKABLE_SELECTOR);
+    for (const el of elements) {
+      const rect = el.getBoundingClientRect();
+      const top = rect.top + window.scrollY;
+      const height = rect.height;
+      // Taller than a page? Can't help — let it split.
+      if (height >= PDF_PAGE_HEIGHT) continue;
+
+      const topPage = Math.floor(top / PDF_PAGE_HEIGHT);
+      const bottomPage = Math.floor((top + height - 1) / PDF_PAGE_HEIGHT);
+      if (topPage === bottomPage) continue;   // already fits inside one page
+
+      // Push the element down to the start of the next page by adding
+      // margin-top with !important — the print-mode .mindle-mermaid
+      // rule has `margin !important`, which would otherwise silently
+      // override a plain inline value and swallow the push.
+      const nextPageStart = (topPage + 1) * PDF_PAGE_HEIGHT;
+      const pushDown = nextPageStart - top;
+      const currentMargin = parseFloat(window.getComputedStyle(el).marginTop) || 0;
+      if (!("mindleOrigMargin" in el.dataset)) {
+        el.dataset.mindleOrigMargin = el.style.marginTop || "";
+      }
+      el.style.setProperty("margin-top", (currentMargin + pushDown) + "px", "important");
+      void document.documentElement.offsetHeight;
+    }
+  }
+
+  function restorePageBreakMargins() {
+    for (const el of document.querySelectorAll(PDF_UNBREAKABLE_SELECTOR)) {
+      if ("mindleOrigMargin" in el.dataset) {
+        el.style.removeProperty("margin-top");
+        if (el.dataset.mindleOrigMargin) {
+          el.style.marginTop = el.dataset.mindleOrigMargin;
+        }
+        delete el.dataset.mindleOrigMargin;
+      }
+    }
+  }
+
   // -------- Selection capture --------
 
   function getDocFlatText() {

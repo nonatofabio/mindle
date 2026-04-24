@@ -104,6 +104,12 @@ struct MindleCommands: Commands {
                 .disabled(!(store?.canExportAnnotations ?? false))
         }
 
+        CommandGroup(replacing: .printItem) {
+            Button("Export as PDF…") { store?.requestPDFExport() }
+                .keyboardShortcut("p", modifiers: .command)
+                .disabled(!(store?.canExportPDF ?? false))
+        }
+
         CommandGroup(after: .pasteboard) {
             Divider()
             Button("Highlight Selection") {

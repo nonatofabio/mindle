@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import AppKit
+import PDFKit
 
 struct WebReaderView: NSViewRepresentable {
     @EnvironmentObject var store: DocumentStore
@@ -88,6 +89,11 @@ struct WebReaderView: NSViewRepresentable {
             coord.lastSearchPrevAt = t
             web.evaluateJavaScript("window.mindleSearchPrev();")
         }
+
+        if let t = store.pdfExportRequestedAt, t != coord.lastPDFExportAt {
+            coord.lastPDFExportAt = t
+            coord.runPDFExport()
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -106,8 +112,94 @@ struct WebReaderView: NSViewRepresentable {
         var lastSearchQuery: String = ""
         var lastSearchNextAt: Date?
         var lastSearchPrevAt: Date?
+        var lastPDFExportAt: Date?
 
         init(_ p: WebReaderView) { parent = p }
+
+        // US Letter in points — WKWebView's createPDF measures in pt (1 px = 1 pt).
+        static let pdfPageWidth: CGFloat = 612
+        static let pdfPageHeight: CGFloat = 792
+
+        func runPDFExport() {
+            guard let web = self.web else { NSSound.beep(); return }
+
+            let panel = NSSavePanel()
+            panel.title = "Export PDF"
+            panel.allowedContentTypes = [.pdf]
+            let baseName = parent.store.fileURL?
+                .deletingPathExtension()
+                .lastPathComponent ?? "Mindle"
+            panel.nameFieldStringValue = "\(baseName).pdf"
+            guard panel.runModal() == .OK, let destURL = panel.url else { return }
+
+            // Flip to print-mode CSS (constrains body to 612pt) and read
+            // the resulting scrollHeight so we know how many Letter-sized
+            // pages to capture.
+            web.evaluateJavaScript("window.mindleBeginPDFExport();") { [weak self] result, _ in
+                guard let self, let web = self.web else { return }
+
+                let totalHeight = (result as? CGFloat) ?? Self.pdfPageHeight
+                let pageCount = max(1, Int(ceil(totalHeight / Self.pdfPageHeight)))
+
+                self.capturePages(
+                    web: web,
+                    remaining: pageCount,
+                    pageIndex: 0,
+                    pageCount: pageCount,
+                    document: PDFDocument(),
+                    destination: destURL
+                )
+            }
+        }
+
+        private func capturePages(
+            web: WKWebView,
+            remaining: Int,
+            pageIndex: Int,
+            pageCount: Int,
+            document: PDFDocument,
+            destination: URL
+        ) {
+            if remaining == 0 {
+                // Done: restore screen styling, then write the stitched PDF.
+                web.evaluateJavaScript("window.mindleEndPDFExport();", completionHandler: nil)
+                if let data = document.dataRepresentation() {
+                    do {
+                        try data.write(to: destination, options: .atomic)
+                    } catch {
+                        NSSound.beep()
+                    }
+                } else {
+                    NSSound.beep()
+                }
+                return
+            }
+
+            let config = WKPDFConfiguration()
+            config.rect = CGRect(
+                x: 0,
+                y: CGFloat(pageIndex) * Self.pdfPageHeight,
+                width: Self.pdfPageWidth,
+                height: Self.pdfPageHeight
+            )
+
+            web.createPDF(configuration: config) { [weak self] result in
+                guard let self else { return }
+                if case .success(let data) = result,
+                   let pdf = PDFDocument(data: data),
+                   let page = pdf.page(at: 0) {
+                    document.insert(page, at: document.pageCount)
+                }
+                self.capturePages(
+                    web: web,
+                    remaining: remaining - 1,
+                    pageIndex: pageIndex + 1,
+                    pageCount: pageCount,
+                    document: document,
+                    destination: destination
+                )
+            }
+        }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             loaded = true

@@ -65,6 +65,7 @@ Requires **macOS 14+** and **Xcode Command Line Tools** (`xcode-select --install
 | `⌘O` | Open a file |
 | `⌘F` | Find in document |
 | `⌘G` / `⌘⇧G` | Next / previous match |
+| `⌘P` | Export as PDF |
 | `⌘⇧E` | Export annotations (Markdown or JSON) |
 | `⌘⇧H` | Highlight selection |
 | `⌘⇧N` | Add note to selection |
@@ -92,7 +93,7 @@ Annotations use a **text + context** anchoring strategy (inspired by [Hypothes.i
 - [ ] **Multiple files** — tabbed or sidebar-based file browser
 - [x] **Mermaid diagrams** — render `mermaid` fenced code blocks inline
 - [x] **Image support** — resolve relative image paths from the `.md` file's directory
-- [ ] **Print / PDF export** — `⌘P` with theme-aware print stylesheet
+- [x] **PDF export** — `⌘P` exports the document as a paginated Letter-size PDF with print-styled typography
 - [ ] **Homebrew cask** — `brew install --cask mindle`
 - [ ] **iOS / iPadOS app** — multiplatform build sharing the same WebKit reader and annotation engine
 

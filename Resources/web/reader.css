@@ -356,6 +356,115 @@ pre, pre code { white-space: pre; }
   transform: rotate(90deg);
 }
 
+/* -- Print / PDF export --
+   Theme-neutral layout: always white paper, dark text, preserved
+   highlights. Overrides theme variables for printout only. macOS's
+   print dialog routes through this stylesheet whether the user is
+   sending to a printer or using "Save as PDF". */
+/* -- PDF export styling --
+   Applied by toggling `html.mindle-print-mode` from JS right before
+   WKWebView.createPDF captures the document. White paper, dark text,
+   preserved highlights, no UI chrome. Kept as a class (not @media
+   print) because createPDF renders in screen-media context. */
+html.mindle-print-mode {
+  background: #ffffff !important;
+  color: #121212 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+/* Body is constrained to Letter width (612pt) with padding that
+   becomes the PDF's margins. Chunked createPDF captures 612×792
+   regions of this body, stacking them as native Letter-sized pages
+   so the result is a real multi-page PDF with selectable text.
+   font-size/line-height must be on body (not html) to override the
+   explicit `html, body { font-size: 18px }` screen rule and any
+   inline zoom set by ⌘+ / ⌘-. */
+html.mindle-print-mode body {
+  background: #ffffff !important;
+  color: #121212 !important;
+  font-size: 10pt !important;
+  line-height: 1.45 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  width: 612px !important;
+  padding: 56px 64px !important;
+}
+/* Code blocks wrap long lines instead of overflowing the page. */
+html.mindle-print-mode pre,
+html.mindle-print-mode pre code {
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+}
+/* Mermaid diagrams fit within a single page. Inline-block preserves
+   the SVG's intrinsic dimensions so small diagrams don't stretch to
+   container width; centering happens via the parent's text-align. */
+html.mindle-print-mode .mindle-mermaid {
+  max-height: 680px !important;
+  overflow: hidden !important;
+  text-align: center !important;
+}
+html.mindle-print-mode .mindle-mermaid svg {
+  max-width: 100% !important;
+  max-height: 680px !important;
+  width: auto !important;
+  height: auto !important;
+  display: inline-block !important;
+}
+html.mindle-print-mode article#doc {
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+html.mindle-print-mode a { color: inherit; text-decoration: underline; }
+html.mindle-print-mode h1,
+html.mindle-print-mode h2,
+html.mindle-print-mode h3,
+html.mindle-print-mode h4,
+html.mindle-print-mode h5,
+html.mindle-print-mode h6 {
+  color: #121212 !important;
+}
+html.mindle-print-mode pre,
+html.mindle-print-mode code,
+html.mindle-print-mode kbd,
+html.mindle-print-mode samp {
+  background: #f2f1ef !important;
+  color: #121212 !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Annotation highlights keep a soft tint so they survive the export. */
+html.mindle-print-mode mark.mindle-hl {
+  background: rgba(243, 176, 74, 0.5) !important;
+  color: inherit !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+html.mindle-print-mode mark.mindle-hl.has-note {
+  background: rgba(217, 122, 42, 0.4) !important;
+}
+html.mindle-print-mode mark.mindle-hl.focused { outline: none; }
+
+/* Search marks are transient UI — stripped from the export entirely. */
+html.mindle-print-mode mark.mindle-search,
+html.mindle-print-mode mark.mindle-search.current {
+  background: transparent !important;
+  outline: none !important;
+  color: inherit !important;
+}
+
+/* Mermaid: strip the card chrome, let the diagram export bare. */
+html.mindle-print-mode .mindle-mermaid {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  cursor: default !important;
+  padding: 0 !important;
+  margin: 1em auto !important;
+}
+
 .mindle-mermaid-error {
   margin: 1em 0 0;
   padding: 0.75rem 1rem;

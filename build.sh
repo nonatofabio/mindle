@@ -21,7 +21,7 @@ mkdir -p build
 swiftc -O \
   -target arm64-apple-macos14.0 \
   -parse-as-library \
-  -framework SwiftUI -framework AppKit -framework Foundation -framework UniformTypeIdentifiers -framework WebKit \
+  -framework SwiftUI -framework AppKit -framework Foundation -framework UniformTypeIdentifiers -framework WebKit -framework PDFKit \
   Sources/mindle/*.swift \
   -o "$BIN"
 
