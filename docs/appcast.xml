@@ -5,5 +5,14 @@
     <link>https://nonatofabio.github.io/mindle/appcast.xml</link>
     <description>Most recent releases of Mindle — a quiet place to read Markdown.</description>
     <language>en</language>
+      <item>
+      <title>Version 1.3.0-rc1</title>
+      <pubDate>Fri, 24 Apr 2026 20:20:06 +0000</pubDate>
+      <sparkle:shortVersionString>1.3.0-rc1</sparkle:shortVersionString>
+      <sparkle:version>34</sparkle:version>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>Release 1.3.0-rc1. <a href="https://github.com/nonatofabio/mindle/releases/tag/v1.3.0-rc1">Full release notes on GitHub</a>.</p><hr><p style="text-align: center; font-size: 0.85em; color: #7d6b52; margin-top: 1.5em;"><a href="https://buymeacoffee.com/nonatofabio" style="color: #8c5520; text-decoration: none;">☕ Buy me a coffee</a></p>]]></description>
+      <enclosure url="https://github.com/nonatofabio/mindle/releases/download/v1.3.0-rc1/Mindle.dmg" sparkle:edSignature="Bccg3YPi4on9+EY1UvGg6Nrg/V5UjLRvJQewNUNQTqM+mByHNf1yuIS/fx0vYFDY236w2NDKV4aAzuwqsaJ2BA==" length="2556942" type="application/octet-stream" />
+    </item>
   </channel>
 </rss>
