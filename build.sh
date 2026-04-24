@@ -9,8 +9,18 @@ BIN_NAME="mindle"
 APP_BUNDLE="build/${APP_NAME}.app"
 BIN="build/${BIN_NAME}"
 
-# User-facing (marketing) version — bump this when cutting a release.
-SHORT_VERSION="1.3.0"
+# User-facing (marketing) version.
+# When building from a tag (CI release), use the tag as the version so
+# CFBundleShortVersionString matches the appcast entry (critical for
+# Sparkle's version comparison). Untagged builds (local dev,
+# workflow_dispatch on main) fall back to the hardcoded value below.
+SHORT_VERSION_FALLBACK="1.3.0"
+GIT_TAG="$(git describe --exact-match --tags 2>/dev/null || true)"
+if [ -n "$GIT_TAG" ]; then
+  SHORT_VERSION="${GIT_TAG#v}"
+else
+  SHORT_VERSION="$SHORT_VERSION_FALLBACK"
+fi
 # Monotonic build number derived from commit history, so the About
 # panel shows a distinct "Version X.Y.Z (N)" instead of "(X.Y.Z)".
 # Falls back to 1 when git history isn't available (shallow clone).
