@@ -5,3 +5,7 @@ build/
 *~
 .sample.md.mindle.json
 *.mindle.json
+# Never commit exported signing keys — belt-and-suspenders guard.
+*.key
+*.p12
+*.p8
