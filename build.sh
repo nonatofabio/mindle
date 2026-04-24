@@ -15,16 +15,32 @@ BIN="build/${BIN_NAME}"
 # Sparkle's version comparison). Untagged builds (local dev,
 # workflow_dispatch on main) fall back to the hardcoded value below.
 SHORT_VERSION_FALLBACK="1.3.0"
-GIT_TAG="$(git describe --exact-match --tags 2>/dev/null || true)"
-if [ -n "$GIT_TAG" ]; then
-  SHORT_VERSION="${GIT_TAG#v}"
-else
-  SHORT_VERSION="$SHORT_VERSION_FALLBACK"
-fi
+case "${GITHUB_REF:-}" in
+  refs/tags/*)
+    SHORT_VERSION="${GITHUB_REF#refs/tags/v}"
+    ;;
+  *)
+    GIT_TAG="$(git describe --exact-match --tags 2>/dev/null || true)"
+    if [ -n "$GIT_TAG" ]; then
+      SHORT_VERSION="${GIT_TAG#v}"
+    else
+      SHORT_VERSION="$SHORT_VERSION_FALLBACK"
+    fi
+    ;;
+esac
+
 # Monotonic build number derived from commit history, so the About
 # panel shows a distinct "Version X.Y.Z (N)" instead of "(X.Y.Z)".
-# Falls back to 1 when git history isn't available (shallow clone).
-BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+# In CI, use GITHUB_SHA explicitly so the count matches whatever
+# commit the workflow is actually building — not whatever HEAD
+# happens to be pointing at (which can drift between steps).
+if [ -n "${GITHUB_SHA:-}" ]; then
+  BUILD_NUMBER="$(git rev-list --count "$GITHUB_SHA" 2>/dev/null || echo 1)"
+else
+  BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+fi
+
+echo "→ Building $APP_NAME $SHORT_VERSION (build $BUILD_NUMBER)"
 
 echo "→ Compiling Swift sources…"
 mkdir -p build
