@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Sparkle
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -8,7 +9,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingURLs: [URL] = []
     private weak var activeStore: DocumentStore?
 
+    // Sparkle updater: instantiated once per app lifecycle. startingUpdater
+    // true lets Sparkle schedule its own background check if the user has
+    // opted into automatic updates. On first launch after a version that
+    // has SUFeedURL set, Sparkle prompts the user to choose whether to
+    // enable automatic checks — opt-in, off by default for Mindle.
+    let updaterController: SPUStandardUpdaterController
+
     override init() {
+        self.updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
         super.init()
         AppDelegate.shared = self
     }
@@ -89,6 +102,8 @@ struct MindleCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Mindle") { showAboutPanel() }
+            Divider()
+            CheckForUpdatesView()
         }
 
         CommandGroup(replacing: .newItem) {
@@ -175,6 +190,18 @@ struct MindleCommands: Commands {
             Button("Toggle Theme") { store?.toggleTheme() }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
                 .disabled(store == nil)
+        }
+    }
+}
+
+/// Simple menu-bar entry that asks Sparkle to check for updates on demand.
+/// Sparkle handles all UI (the "you're up to date" dialog, the update
+/// prompt, the download+install flow, the relaunch) — this button is
+/// just the trigger.
+struct CheckForUpdatesView: View {
+    var body: some View {
+        Button("Check for Updates…") {
+            AppDelegate.shared?.updaterController.checkForUpdates(nil)
         }
     }
 }

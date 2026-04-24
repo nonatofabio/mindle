@@ -21,7 +21,9 @@ mkdir -p build
 swiftc -O \
   -target arm64-apple-macos14.0 \
   -parse-as-library \
-  -framework SwiftUI -framework AppKit -framework Foundation -framework UniformTypeIdentifiers -framework WebKit -framework PDFKit \
+  -F Frameworks \
+  -framework SwiftUI -framework AppKit -framework Foundation -framework UniformTypeIdentifiers -framework WebKit -framework PDFKit -framework Sparkle \
+  -Xlinker -rpath -Xlinker "@executable_path/../Frameworks" \
   Sources/mindle/*.swift \
   -o "$BIN"
 
@@ -29,8 +31,12 @@ echo "→ Assembling app bundle…"
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
+mkdir -p "$APP_BUNDLE/Contents/Frameworks"
 
 cp "$BIN" "$APP_BUNDLE/Contents/MacOS/$BIN_NAME"
+
+# -------- Bundle Sparkle framework --------
+cp -R Frameworks/Sparkle.framework "$APP_BUNDLE/Contents/Frameworks/"
 
 # -------- Copy web resources (HTML/CSS/JS + vendor libs) --------
 cp -R Resources/web "$APP_BUNDLE/Contents/Resources/web"
@@ -117,6 +123,10 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <string>public.app-category.productivity</string>
   <key>NSHumanReadableCopyright</key>
   <string>© 2026 Fabio Nonato. MIT License.</string>
+  <key>SUFeedURL</key>
+  <string>https://nonatofabio.github.io/mindle/appcast.xml</string>
+  <key>SUPublicEDKey</key>
+  <string>ytbRadXLOaP+tXH1WggjFQn4fCJ89yNbz9LAkSUu5bw=</string>
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>
