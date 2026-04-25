@@ -1,0 +1,88 @@
+name: Track release downloads
+
+on:
+  schedule:
+    - cron: '17 3 * * *'   # daily, ~03:17 UTC (off-peak, avoids the on-the-hour rush)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: track-downloads
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Build download snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/snap
+          # gh --paginate concatenates array pages into a single JSON array.
+          gh api repos/${{ github.repository }}/releases --paginate \
+            > /tmp/snap/releases.json
+
+          jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+            {
+              date: $ts,
+              total: ([.[].assets[]?.download_count // 0] | add // 0),
+              releases: (
+                [
+                  .[] |
+                  { (.tag_name): (
+                      .assets // []
+                      | map({ (.name): .download_count })
+                      | add // {}
+                  ) }
+                ]
+                | add // {}
+              )
+            }
+          ' /tmp/snap/releases.json > /tmp/snap/line.json
+
+          echo "Snapshot:"
+          cat /tmp/snap/line.json
+
+      - name: Append to stats branch
+        run: |
+          set -euo pipefail
+          STATS_DIR=$(mktemp -d)
+
+          if git ls-remote --exit-code --heads origin stats >/dev/null 2>&1; then
+            git fetch origin stats
+            git worktree add "$STATS_DIR" stats
+          else
+            # First run: bootstrap an orphan 'stats' branch with no shared history.
+            git worktree add --detach "$STATS_DIR"
+            (
+              cd "$STATS_DIR"
+              git checkout --orphan stats
+              git rm -rf . >/dev/null 2>&1 || true
+              find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+            )
+          fi
+
+          mkdir -p "$STATS_DIR/stats"
+          jq -c . /tmp/snap/line.json >> "$STATS_DIR/stats/downloads.jsonl"
+
+          cd "$STATS_DIR"
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add stats/downloads.jsonl
+            git commit -m "stats: snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push origin stats
+          else
+            echo "No changes — totals unchanged since last snapshot."
+          fi
