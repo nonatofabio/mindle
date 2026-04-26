@@ -24,6 +24,17 @@ struct FileNode: Identifiable, Equatable {
     let children: [FileNode]?   // nil = leaf file; non-nil = directory
 }
 
+/// One open document inside a window. Active-tab state still lives in
+/// the window-scoped @Published vars (`fileURL`, `rawText`, `annotations`)
+/// so all existing features keep working untouched; inactive tabs are
+/// snapshotted here and rehydrated on activate.
+struct DocumentTab: Identifiable, Equatable {
+    let id: UUID
+    var fileURL: URL
+    var rawText: String
+    var annotations: [Annotation]
+}
+
 @MainActor
 final class DocumentStore: ObservableObject {
     @Published var fileURL: URL?
@@ -35,6 +46,11 @@ final class DocumentStore: ObservableObject {
     @Published var showAnnotations: Bool = false
     @Published var showFileBrowser: Bool = false
     @Published var fileTree: FileNode? = nil
+
+    // Tabs (per-window). Empty when no document is open; otherwise the active
+    // tab's state mirrors `fileURL` / `rawText` / `annotations` above.
+    @Published var tabs: [DocumentTab] = []
+    @Published var activeTabID: UUID? = nil
 
     // Search
     @Published var showSearch: Bool = false
@@ -80,6 +96,12 @@ final class DocumentStore: ObservableObject {
     }
 
     func open(url: URL) {
+        // Already open in this window? Switch to its tab without re-reading from disk.
+        if let existing = tabs.first(where: { $0.fileURL == url }) {
+            activate(tabID: existing.id)
+            return
+        }
+
         do {
             let text = try String(contentsOf: url, encoding: .utf8)
             // Re-root the file tree only when the new file is outside the current scope.
@@ -91,11 +113,28 @@ final class DocumentStore: ObservableObject {
                 shouldRebuildTree = true
             }
 
+            // Persist the outgoing tab's in-memory state into its snapshot so
+            // we can rehydrate it without going back to disk if the user
+            // returns to it.
+            snapshotActiveTab()
+
+            let newTab = DocumentTab(id: UUID(), fileURL: url, rawText: text, annotations: [])
+            tabs.append(newTab)
+            activeTabID = newTab.id
+
             closeSearch()
+            focusedAnnotation = nil
+            editingAnnotationID = nil
+            updateSelection(text: "", prefix: "", suffix: "")
+
             self.fileURL = url
             self.rawText = text
             self.annotations = []
             self.loadSidecar()
+
+            // Capture the sidecar-loaded annotations into the tab snapshot.
+            snapshotActiveTab()
+
             if shouldRebuildTree {
                 refreshFileTree()
             }
@@ -103,6 +142,69 @@ final class DocumentStore: ObservableObject {
         } catch {
             NSSound.beep()
         }
+    }
+
+    // MARK: - Tabs
+
+    func activate(tabID: UUID) {
+        guard activeTabID != tabID,
+              let target = tabs.first(where: { $0.id == tabID }) else { return }
+        snapshotActiveTab()
+        activeTabID = tabID
+        loadTabState(target)
+    }
+
+    func closeTab(id: UUID) {
+        guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let isActive = (activeTabID == id)
+
+        // Make sure the snapshot we save reflects the latest in-memory state.
+        if isActive {
+            snapshotActiveTab()
+        }
+        saveSidecar(forTab: tabs[i])
+
+        tabs.remove(at: i)
+
+        guard isActive else { return }
+
+        if i < tabs.count {
+            let target = tabs[i]
+            activeTabID = target.id
+            loadTabState(target)
+        } else if let last = tabs.last {
+            activeTabID = last.id
+            loadTabState(last)
+        } else {
+            // Last tab closed — back to empty state.
+            activeTabID = nil
+            fileURL = nil
+            rawText = ""
+            annotations = []
+            closeSearch()
+            focusedAnnotation = nil
+            editingAnnotationID = nil
+            updateSelection(text: "", prefix: "", suffix: "")
+        }
+    }
+
+    private func snapshotActiveTab() {
+        guard let id = activeTabID,
+              let i = tabs.firstIndex(where: { $0.id == id }),
+              let url = fileURL else { return }
+        tabs[i].fileURL = url
+        tabs[i].rawText = rawText
+        tabs[i].annotations = annotations
+    }
+
+    private func loadTabState(_ tab: DocumentTab) {
+        fileURL = tab.fileURL
+        rawText = tab.rawText
+        annotations = tab.annotations
+        closeSearch()
+        focusedAnnotation = nil
+        editingAnnotationID = nil
+        updateSelection(text: "", prefix: "", suffix: "")
     }
 
     // MARK: - File browser
@@ -289,6 +391,16 @@ final class DocumentStore: ObservableObject {
 
     func saveSidecar() {
         guard let url = sidecarURL else { return }
+        writeSidecar(to: url, annotations: annotations)
+    }
+
+    private func saveSidecar(forTab tab: DocumentTab) {
+        let url = tab.fileURL.deletingLastPathComponent()
+            .appendingPathComponent(".\(tab.fileURL.lastPathComponent).mindle.json")
+        writeSidecar(to: url, annotations: tab.annotations)
+    }
+
+    private func writeSidecar(to url: URL, annotations: [Annotation]) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601

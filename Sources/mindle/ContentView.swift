@@ -17,16 +17,21 @@ struct ContentView: View {
             if store.fileURL == nil {
                 EmptyStateView()
             } else {
-                HSplitView {
-                    if store.showFileBrowser {
-                        FileBrowserSidebar()
-                            .frame(minWidth: 200, idealWidth: 260, maxWidth: 400)
+                VStack(spacing: 0) {
+                    if store.tabs.count >= 2 {
+                        TabBar()
                     }
-                    ReaderPane()
-                        .frame(minWidth: 480)
-                    if store.showAnnotations {
-                        AnnotationsSidebar()
-                            .frame(minWidth: 280, idealWidth: 340, maxWidth: 460)
+                    HSplitView {
+                        if store.showFileBrowser {
+                            FileBrowserSidebar()
+                                .frame(minWidth: 200, idealWidth: 260, maxWidth: 400)
+                        }
+                        ReaderPane()
+                            .frame(minWidth: 480)
+                        if store.showAnnotations {
+                            AnnotationsSidebar()
+                                .frame(minWidth: 280, idealWidth: 340, maxWidth: 460)
+                        }
                     }
                 }
             }
@@ -607,5 +612,91 @@ struct FileTreeRow: View {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+// MARK: - Tab bar
+
+struct TabBar: View {
+    @EnvironmentObject var store: DocumentStore
+
+    var body: some View {
+        let c = store.theme.colors
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(store.tabs) { tab in
+                    TabBarItem(tab: tab)
+                }
+            }
+        }
+        .background(c.surface.opacity(0.5))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(c.rule.opacity(0.4)).frame(height: 0.5)
+        }
+    }
+}
+
+struct TabBarItem: View {
+    let tab: DocumentTab
+    @EnvironmentObject var store: DocumentStore
+    @State private var isHovering: Bool = false
+
+    var body: some View {
+        let c = store.theme.colors
+        let isActive = store.activeTabID == tab.id
+        let bg: Color = isActive
+            ? c.background
+            : (isHovering ? c.surface.opacity(0.7) : Color.clear)
+
+        ZStack(alignment: .trailing) {
+            // Underlying activate button — fills the row, with a clear
+            // spacer reserving the X button's hit area on the right.
+            Button {
+                store.activate(tabID: tab.id)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 10))
+                        .foregroundStyle(isActive ? c.accent : c.muted)
+                    Text(tab.fileURL.lastPathComponent)
+                        .font(.system(size: 12, design: .serif))
+                        .foregroundStyle(isActive ? c.text : c.muted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 0)
+                    Color.clear.frame(width: 18, height: 14)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .frame(minWidth: 120, maxWidth: 220)
+                .background(bg)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // Close button — drawn on top of the activate button so its
+            // hit-test wins for clicks inside the X glyph.
+            Button {
+                store.closeTab(id: tab.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(c.muted)
+                    .frame(width: 16, height: 16)
+                    .background(
+                        Circle()
+                            .fill(isHovering ? c.muted.opacity(0.18) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .opacity(isActive || isHovering ? 1 : 0.6)
+            .padding(.trailing, 8)
+            .help("Close tab")
+        }
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(c.rule.opacity(0.3)).frame(width: 0.5)
+        }
+        .onHover { isHovering = $0 }
     }
 }
