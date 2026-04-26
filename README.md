@@ -22,6 +22,7 @@
   <img src="https://img.shields.io/badge/swift-6.x-orange?style=flat-square" alt="Swift 6">
   <img src="https://img.shields.io/github/license/nonatofabio/mindle?style=flat-square" alt="MIT License">
   <img src="https://img.shields.io/github/actions/workflow/status/nonatofabio/mindle/build.yml?style=flat-square&label=build" alt="Build status">
+  <img src="https://img.shields.io/github/downloads/nonatofabio/mindle/total?style=flat-square&label=downloads" alt="Total downloads">
 </p>
 
 ---
