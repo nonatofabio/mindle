@@ -91,7 +91,7 @@ Annotations use a **text + context** anchoring strategy (inspired by [Hypothes.i
 
 - [ ] **Search** (`⌘F`) — find-in-document with match highlighting
 - [x] **Export annotations** — Markdown or JSON dump of all highlights and notes
-- [ ] **Multiple files** — tabbed or sidebar-based file browser
+- [x] **Multiple files** — file browser sidebar (`⌘⇧F`) and a tab bar for multiple open documents
 - [x] **Mermaid diagrams** — render `mermaid` fenced code blocks inline
 - [x] **Image support** — resolve relative image paths from the `.md` file's directory
 - [x] **PDF export** — `⌘P` exports the document as a paginated Letter-size PDF with print-styled typography
