@@ -119,6 +119,21 @@ struct MindleCommands: Commands {
                 .disabled(!(store?.canExportAnnotations ?? false))
         }
 
+        // Replace the default Close so ⌘W closes the active tab when more
+        // than one is open in the focused window. Falls back to closing the
+        // window itself for single-tab (or empty) windows — the standard
+        // Safari/Xcode pattern.
+        CommandGroup(replacing: .saveItem) {
+            Button((store?.tabs.count ?? 0) >= 2 ? "Close Tab" : "Close") {
+                if let store, store.tabs.count >= 2, let id = store.activeTabID {
+                    store.closeTab(id: id)
+                } else {
+                    NSApp.keyWindow?.performClose(nil)
+                }
+            }
+            .keyboardShortcut("w", modifiers: .command)
+        }
+
         CommandGroup(replacing: .printItem) {
             Button("Export as PDF…") { store?.requestPDFExport() }
                 .keyboardShortcut("p", modifiers: .command)
