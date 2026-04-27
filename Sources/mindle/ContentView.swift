@@ -648,52 +648,48 @@ struct TabBarItem: View {
             ? c.background
             : (isHovering ? c.surface.opacity(0.7) : Color.clear)
 
-        ZStack(alignment: .trailing) {
-            // Underlying activate button — fills the row, with a clear
-            // spacer reserving the X button's hit area on the right.
-            Button {
+        // Two side-by-side hit regions wired via onTapGesture, instead of
+        // stacked Buttons — macOS SwiftUI's Button hit-test in a ZStack
+        // can extend beyond the visible label and swallow clicks across
+        // the whole row. Plain tap gestures on sibling views stay scoped.
+        HStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 10))
+                    .foregroundStyle(isActive ? c.accent : c.muted)
+                Text(tab.fileURL.lastPathComponent)
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(isActive ? c.text : c.muted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 10)
+            .padding(.vertical, 7)
+            .frame(minWidth: 100, maxWidth: 200, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
                 store.activate(tabID: tab.id)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 10))
-                        .foregroundStyle(isActive ? c.accent : c.muted)
-                    Text(tab.fileURL.lastPathComponent)
-                        .font(.system(size: 12, design: .serif))
-                        .foregroundStyle(isActive ? c.text : c.muted)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 0)
-                    Color.clear.frame(width: 18, height: 14)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .frame(minWidth: 120, maxWidth: 220)
-                .background(bg)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
 
-            // Close button — drawn on top of the activate button so its
-            // hit-test wins for clicks inside the X glyph.
-            Button {
-                store.closeTab(id: tab.id)
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(c.muted)
-                    .frame(width: 16, height: 16)
-                    .background(
-                        Circle()
-                            .fill(isHovering ? c.muted.opacity(0.18) : Color.clear)
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .opacity(isActive || isHovering ? 1 : 0.6)
-            .padding(.trailing, 8)
-            .help("Close tab")
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(c.muted)
+                .frame(width: 16, height: 16)
+                .background(
+                    Circle()
+                        .fill(isHovering ? c.muted.opacity(0.18) : Color.clear)
+                )
+                .padding(.horizontal, 6)
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
+                .opacity(isActive || isHovering ? 1 : 0.6)
+                .onTapGesture {
+                    store.closeTab(id: tab.id)
+                }
+                .help("Close tab")
         }
+        .background(bg)
         .overlay(alignment: .trailing) {
             Rectangle().fill(c.rule.opacity(0.3)).frame(width: 0.5)
         }
