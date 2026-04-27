@@ -6,12 +6,11 @@ struct ContentView: View {
 
     var body: some View {
         let c = store.theme.colors
-        // The themed fill needs to extend through the toolbar safe
-        // area so the unified-toolbar's translucent material picks up
-        // the theme color as its backdrop. Without .ignoresSafeArea()
-        // the material bleeds to the window's system-gray backing and
-        // the toolbar reads as a flat dark bar.
         ZStack {
+            // The themed fill needs to extend through the toolbar safe
+            // area so the unified-toolbar's translucent material picks up
+            // the theme color as its backdrop. Without .ignoresSafeArea()
+            // the material bleeds to the window's system-gray backing.
             c.background.ignoresSafeArea()
 
             if store.fileURL == nil {
@@ -622,12 +621,14 @@ struct TabBar: View {
 
     var body: some View {
         let c = store.theme.colors
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
-                ForEach(store.tabs) { tab in
-                    TabBarItem(tab: tab)
-                }
+        // Plain HStack rather than ScrollView: NSScrollView eats the first
+        // mouse-down to disambiguate scroll-vs-tap, which blocked the inner
+        // Buttons from firing. Many-tabs overflow can be revisited later.
+        HStack(spacing: 0) {
+            ForEach(store.tabs) { tab in
+                TabBarItem(tab: tab)
             }
+            Spacer(minLength: 0)
         }
         .background(c.surface.opacity(0.5))
         .overlay(alignment: .bottom) {
@@ -648,46 +649,50 @@ struct TabBarItem: View {
             ? c.background
             : (isHovering ? c.surface.opacity(0.7) : Color.clear)
 
-        // Two side-by-side hit regions wired via onTapGesture, instead of
-        // stacked Buttons — macOS SwiftUI's Button hit-test in a ZStack
-        // can extend beyond the visible label and swallow clicks across
-        // the whole row. Plain tap gestures on sibling views stay scoped.
+        // Two real Buttons side-by-side in an HStack. Button's underlying
+        // NSView opts out of window-drag (mouseDownCanMoveWindow = false),
+        // which onTapGesture does not — so this layout works even if the
+        // tab bar overlaps a window-drag region.
         HStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 10))
-                    .foregroundStyle(isActive ? c.accent : c.muted)
-                Text(tab.fileURL.lastPathComponent)
-                    .font(.system(size: 12, design: .serif))
-                    .foregroundStyle(isActive ? c.text : c.muted)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, 10)
-            .padding(.vertical, 7)
-            .frame(minWidth: 100, maxWidth: 200, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
+            Button {
                 store.activate(tabID: tab.id)
-            }
-
-            Image(systemName: "xmark")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(c.muted)
-                .frame(width: 16, height: 16)
-                .background(
-                    Circle()
-                        .fill(isHovering ? c.muted.opacity(0.18) : Color.clear)
-                )
-                .padding(.horizontal, 6)
-                .padding(.vertical, 7)
-                .contentShape(Rectangle())
-                .opacity(isActive || isHovering ? 1 : 0.6)
-                .onTapGesture {
-                    store.closeTab(id: tab.id)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 10))
+                        .foregroundStyle(isActive ? c.accent : c.muted)
+                    Text(tab.fileURL.lastPathComponent)
+                        .font(.system(size: 12, design: .serif))
+                        .foregroundStyle(isActive ? c.text : c.muted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 0)
                 }
-                .help("Close tab")
+                .padding(.leading, 10)
+                .padding(.vertical, 7)
+                .frame(minWidth: 100, maxWidth: 200, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                store.closeTab(id: tab.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(c.muted)
+                    .frame(width: 16, height: 16)
+                    .background(
+                        Circle()
+                            .fill(isHovering ? c.muted.opacity(0.18) : Color.clear)
+                    )
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .opacity(isActive || isHovering ? 1 : 0.6)
+            .help("Close tab")
         }
         .background(bg)
         .overlay(alignment: .trailing) {
