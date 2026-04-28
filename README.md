@@ -89,7 +89,7 @@ Annotations use a **text + context** anchoring strategy (inspired by [Hypothes.i
 
 ## Roadmap
 
-- [ ] **Search** (`⌘F`) — find-in-document with match highlighting
+- [x] **Search** (`⌘F`) — find-in-document with match highlighting
 - [x] **Export annotations** — Markdown or JSON dump of all highlights and notes
 - [x] **Multiple files** — file browser sidebar (`⌘⇧F`) and a tab bar for multiple open documents
 - [x] **Mermaid diagrams** — render `mermaid` fenced code blocks inline
