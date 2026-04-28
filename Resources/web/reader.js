@@ -94,12 +94,21 @@
     return "```yaml\n" + m[1] + "\n```\n\n" + src.slice(m[0].length);
   }
 
-  window.mindleLoad = function (markdown) {
+  window.mindleLoad = async function (markdown, preserveScroll) {
+    // Live-reload: capture scroll before swapping HTML so we can restore
+    // it once the new render is laid out. Initial loads / tab switches
+    // pass false and start at the top.
+    const savedScroll = preserveScroll ? window.scrollY : 0;
     renderedHTML = md.render(unwrapFrontmatter(markdown || ""));
     // Switching documents clears search state; annotations are replayed below.
     searchState = { query: "", current: 0, total: 0, matchSets: [] };
-    applyAll();
+    await applyAll();
     reportSearchResult();
+    if (preserveScroll) {
+      // applyAll's mermaid pass can settle in another frame; restore on
+      // the next paint so the position lands after layout finalizes.
+      requestAnimationFrame(() => window.scrollTo(0, savedScroll));
+    }
   };
 
   window.mindleSetTheme = function (theme) {

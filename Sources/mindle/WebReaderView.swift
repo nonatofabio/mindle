@@ -36,10 +36,14 @@ struct WebReaderView: NSViewRepresentable {
 
         // Only push values that actually changed to avoid resetting DOM/selection
         if store.rawText != coord.lastSource {
+            // Same file, content changed → live reload, preserve scroll.
+            // Different file (or first load) → fresh load, start at top.
+            let isLiveReload = (coord.lastFileURL == store.fileURL && !coord.lastSource.isEmpty)
             coord.lastSource = store.rawText
+            coord.lastFileURL = store.fileURL
             let baseDir = store.fileURL?.deletingLastPathComponent().path ?? ""
             web.evaluateJavaScript("window.mindleSetBaseDir(\(jsString(baseDir)));")
-            web.evaluateJavaScript("window.mindleLoad(\(jsString(store.rawText)));")
+            web.evaluateJavaScript("window.mindleLoad(\(jsString(store.rawText)), \(isLiveReload));")
         }
 
         if store.theme.rawValue != coord.lastTheme {
@@ -105,6 +109,7 @@ struct WebReaderView: NSViewRepresentable {
 
         // Track last-sent values to avoid redundant pushes
         var lastSource: String = ""
+        var lastFileURL: URL?
         var lastTheme: String = ""
         var lastFontScale: Double = 0
         var lastAnnotations: [Annotation] = []
@@ -205,6 +210,7 @@ struct WebReaderView: NSViewRepresentable {
             loaded = true
             // Force initial flush by clearing tracked state
             lastSource = ""
+            lastFileURL = nil
             lastTheme = ""
             lastFontScale = 0
             lastAnnotations = []

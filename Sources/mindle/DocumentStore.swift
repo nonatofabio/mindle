@@ -71,6 +71,10 @@ final class DocumentStore: ObservableObject {
     // Bumped to trigger a PDF export in the WKWebView coordinator.
     @Published var pdfExportRequestedAt: Date? = nil
 
+    // FSEvents-based watcher on the active file. Replaced whenever the
+    // active fileURL changes (open / tab activate / close).
+    private var fileWatcher: FileWatcher?
+
     var hasSelection: Bool { !selectionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private var sidecarURL: URL? {
@@ -139,8 +143,42 @@ final class DocumentStore: ObservableObject {
                 refreshFileTree()
             }
             NSDocumentController.shared.noteNewRecentDocumentURL(url)
+            updateWatcher()
         } catch {
             NSSound.beep()
+        }
+    }
+
+    // MARK: - Live reload
+
+    /// Re-reads the active file from disk in response to a watcher event.
+    /// Annotations stay in memory and re-anchor against the new text via
+    /// the JS pipeline; sidecar is untouched (annotations live there
+    /// regardless of source-text changes).
+    private func reloadFromDisk() {
+        guard let url = fileURL else { return }
+        do {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            // Skip the WKWebView round-trip if the bytes round-tripped the
+            // same — touching mtime alone is enough to fire a watcher event.
+            guard text != rawText else { return }
+            rawText = text
+            // Keep the active tab snapshot in sync so a later switch-out
+            // doesn't snapshot stale text.
+            snapshotActiveTab()
+        } catch {
+            // File may have been moved or deleted. Keep the in-memory
+            // text; user can decide whether to close the tab.
+            NSSound.beep()
+        }
+    }
+
+    private func updateWatcher() {
+        fileWatcher?.stop()
+        fileWatcher = nil
+        guard let url = fileURL else { return }
+        fileWatcher = FileWatcher(url: url) { [weak self] in
+            self?.reloadFromDisk()
         }
     }
 
@@ -185,6 +223,7 @@ final class DocumentStore: ObservableObject {
             focusedAnnotation = nil
             editingAnnotationID = nil
             updateSelection(text: "", prefix: "", suffix: "")
+            updateWatcher()
         }
     }
 
@@ -205,6 +244,7 @@ final class DocumentStore: ObservableObject {
         focusedAnnotation = nil
         editingAnnotationID = nil
         updateSelection(text: "", prefix: "", suffix: "")
+        updateWatcher()
     }
 
     // MARK: - File browser
