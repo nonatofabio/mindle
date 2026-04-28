@@ -83,8 +83,19 @@
     baseDir = dir || "";
   };
 
+  // Files like SKILLS.md begin with a YAML frontmatter block delimited
+  // by `---` lines. By default markdown-it would render the fences as
+  // <hr>s and the body as paragraph text, which loses both the framing
+  // and the syntax. Rewriting it as a fenced yaml code block keeps the
+  // structure visible and routes through highlight.js for free.
+  function unwrapFrontmatter(src) {
+    const m = src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+    if (!m) return src;
+    return "```yaml\n" + m[1] + "\n```\n\n" + src.slice(m[0].length);
+  }
+
   window.mindleLoad = function (markdown) {
-    renderedHTML = md.render(markdown || "");
+    renderedHTML = md.render(unwrapFrontmatter(markdown || ""));
     // Switching documents clears search state; annotations are replayed below.
     searchState = { query: "", current: 0, total: 0, matchSets: [] };
     applyAll();
