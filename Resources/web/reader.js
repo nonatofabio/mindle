@@ -214,6 +214,12 @@
   let activeLastSynced = "";
   let diffChunks = [];   // {id, removeStart, removeEnd, addStart, addEnd, before, after}
 
+  // Set by attachDiffHandlers when the user clicks ✓ Keep / ✗ Revert,
+  // so the next render after the round-trip can scroll to where the
+  // chunk used to be — visual confirmation that the action landed,
+  // instead of leaving the reader frozen at the previous scrollY.
+  let pendingScrollAfterRender = null;
+
   window.mindleLoad = async function (markdown, preserveScroll, lastSynced) {
     // Live-reload: capture scroll before swapping HTML so we can restore
     // it once the new render is laid out. Initial loads / tab switches
@@ -236,7 +242,13 @@
     if (preserveScroll) {
       // applyAll's mermaid pass can settle in another frame; restore on
       // the next paint so the position lands after layout finalizes.
-      requestAnimationFrame(() => window.scrollTo(0, savedScroll));
+      requestAnimationFrame(() => {
+        const target = (pendingScrollAfterRender != null)
+          ? pendingScrollAfterRender
+          : savedScroll;
+        pendingScrollAfterRender = null;
+        window.scrollTo(0, target);
+      });
     }
   };
 
@@ -326,6 +338,16 @@
         const id = btn.getAttribute("data-mindle-diff-id");
         const chunk = diffChunks.find(c => c.id === id);
         if (!chunk) return;
+        // Capture where the chunk lives now so we can scroll back to
+        // the same vertical position on the next render — when the
+        // chunk chrome has collapsed but the content stays where the
+        // user was looking. Without this the reader drifts up to a
+        // shorter doc and the just-actioned content scrolls off-view.
+        const wrapper = btn.closest(".mindle-diff-chunk");
+        if (wrapper) {
+          pendingScrollAfterRender =
+            wrapper.getBoundingClientRect().top + window.scrollY - 40;
+        }
         if (action === "accept") {
           // Promote this chunk's "after" into the baseline.
           const newLastSynced =
