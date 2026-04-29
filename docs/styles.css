@@ -364,6 +364,26 @@ mark.mindle-hl.has-note {
   border-radius: 3px;
 }
 
+.features-foot {
+  margin-top: 2rem;
+  font-size: 0.92rem;
+  color: var(--muted);
+  line-height: 1.6;
+  text-align: center;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.features-foot kbd {
+  font-size: 0.85em;
+}
+.features-foot a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.features-foot a:hover { border-bottom-color: var(--accent); }
+
 /* ===== Shortcuts table ===== */
 .shortcut-table {
   border-collapse: collapse;

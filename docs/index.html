@@ -89,13 +89,33 @@
       <div class="feature-grid">
 
         <div class="feature-card">
+          <h3>Reads alongside you</h3>
+          <p>External edits to the open file — vim, an agent, anything — pick up automatically. When the change is non-trivial, Mindle renders it as a Word-style track-changes overlay you can <kbd>✓ Keep</kbd> or <kbd>✗ Revert</kbd> per chunk.</p>
+        </div>
+
+        <div class="feature-card">
           <h3>Highlight &amp; Annotate</h3>
-          <p>Select any passage, press <kbd>⌘⇧H</kbd> to highlight or <kbd>⌘⇧N</kbd> to attach a note. Persisted per-file in a hidden sidecar next to your markdown.</p>
+          <p>Select any passage, press <kbd>⌘⇧H</kbd> to highlight or <kbd>⌘⇧N</kbd> to attach a note. Persisted per-file in a hidden sidecar — nothing leaves your machine.</p>
         </div>
 
         <div class="feature-card">
           <h3>Full GitHub-Flavored Markdown</h3>
           <p>Tables, task lists, footnotes, strikethrough, syntax-highlighted code, emoji, nested lists, raw HTML. Rendered locally — no network round-trip.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Math &amp; diagrams</h3>
+          <p>LaTeX math via <a href="https://katex.org">KaTeX</a> — inline (<code>$a^2 + b^2 = c^2$</code>) and display blocks. Mermaid diagrams render inline; click to expand. All offline.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Quick Look</h3>
+          <p>Hit <kbd>Space</kbd> on any <code>.md</code> in Finder and Mindle's full reader pipeline renders the preview. No window, no app launch — just a glance.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Tabs &amp; windows</h3>
+          <p><kbd>⌘O</kbd> opens a file in a new tab; <kbd>⌘N</kbd> pops a fresh window. Each window keeps its own tab strip and reader state.</p>
         </div>
 
         <div class="feature-card">
@@ -109,16 +129,12 @@
         </div>
 
         <div class="feature-card">
-          <h3>Images</h3>
-          <p>Relative, absolute, <code>file://</code>, and <code>data:</code> URLs all resolve. Remote <code>http(s)</code> images are blocked — no tracking pixels.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Three Themes</h3>
-          <p>Light, Sepia, Dark. Cycle with <kbd>⌘⇧T</kbd>. Typography controls via <kbd>⌘+</kbd> and <kbd>⌘-</kbd>. The theme sticks per-file.</p>
+          <h3>Themes &amp; typography</h3>
+          <p>Light, Sepia, Dark. Cycle with <kbd>⌘⇧T</kbd>. Scale the serif body with <kbd>⌘+</kbd> / <kbd>⌘-</kbd>. The theme sticks per-file.</p>
         </div>
 
       </div>
+      <p class="features-foot">Plus PDF export (<kbd>⌘P</kbd>), opt-in auto-update via <a href="https://sparkle-project.org">Sparkle</a>, image rendering with remote-host blocking, YAML frontmatter as syntax-highlighted code, and signed-and-notarized DMGs on every release.</p>
     </div>
   </section>
 
@@ -127,9 +143,12 @@
       <h2>Keyboard</h2>
       <table class="shortcut-table">
         <tbody>
-          <tr><td><kbd>⌘O</kbd></td><td>Open a file</td></tr>
+          <tr><td><kbd>⌘O</kbd></td><td>Open a file (adds a tab)</td></tr>
+          <tr><td><kbd>⌘N</kbd></td><td>New window</td></tr>
+          <tr><td><kbd>⌘W</kbd></td><td>Close active tab (or window when only one tab is open)</td></tr>
           <tr><td><kbd>⌘F</kbd></td><td>Find in document</td></tr>
           <tr><td><kbd>⌘G</kbd> / <kbd>⌘⇧G</kbd></td><td>Next / previous match</td></tr>
+          <tr><td><kbd>⌘P</kbd></td><td>Export as PDF</td></tr>
           <tr><td><kbd>⌘⇧E</kbd></td><td>Export annotations (Markdown or JSON)</td></tr>
           <tr><td><kbd>⌘⇧H</kbd></td><td>Highlight selection</td></tr>
           <tr><td><kbd>⌘⇧N</kbd></td><td>Add note to selection</td></tr>
@@ -137,6 +156,7 @@
           <tr><td><kbd>⌘⇧F</kbd></td><td>Toggle files sidebar</td></tr>
           <tr><td><kbd>⌘⇧T</kbd></td><td>Cycle theme (light / sepia / dark)</td></tr>
           <tr><td><kbd>⌘+</kbd> / <kbd>⌘-</kbd></td><td>Increase / decrease font size</td></tr>
+          <tr><td><kbd>⌘⌥⏎</kbd> / <kbd>⌘⌥⌫</kbd></td><td>Keep / revert all in-flight changes</td></tr>
         </tbody>
       </table>
     </div>
