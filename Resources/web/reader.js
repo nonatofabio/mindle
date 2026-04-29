@@ -206,15 +206,32 @@
     return "```yaml\n" + m[1] + "\n```\n\n" + src.slice(m[0].length);
   }
 
-  window.mindleLoad = async function (markdown, preserveScroll) {
+  // -------- Diff state (v1.6) --------
+  // Track the active doc's two-text state so accept/reject handlers can
+  // compute a new lastSynced or new current after a click. Updated on
+  // every mindleLoad call.
+  let activeCurrent = "";
+  let activeLastSynced = "";
+  let diffChunks = [];   // {id, removeStart, removeEnd, addStart, addEnd, before, after}
+
+  window.mindleLoad = async function (markdown, preserveScroll, lastSynced) {
     // Live-reload: capture scroll before swapping HTML so we can restore
     // it once the new render is laid out. Initial loads / tab switches
     // pass false and start at the top.
     const savedScroll = preserveScroll ? window.scrollY : 0;
-    renderedHTML = md.render(unwrapFrontmatter(markdown || ""));
+    activeCurrent = markdown || "";
+    activeLastSynced = (lastSynced != null) ? String(lastSynced) : "";
+    const showDiff = activeLastSynced && activeLastSynced !== activeCurrent && window.Diff;
+    if (showDiff) {
+      renderedHTML = md.render(buildDiffMarkdownSource(activeLastSynced, activeCurrent));
+    } else {
+      renderedHTML = md.render(unwrapFrontmatter(activeCurrent));
+      diffChunks = [];
+    }
     // Switching documents clears search state; annotations are replayed below.
     searchState = { query: "", current: 0, total: 0, matchSets: [] };
     await applyAll();
+    if (showDiff) attachDiffHandlers();
     reportSearchResult();
     if (preserveScroll) {
       // applyAll's mermaid pass can settle in another frame; restore on
@@ -222,6 +239,112 @@
       requestAnimationFrame(() => window.scrollTo(0, savedScroll));
     }
   };
+
+  // -------- Diff render helpers --------
+
+  function buildDiffMarkdownSource(lastSynced, current) {
+    diffChunks = computeDiffChunks(lastSynced, current);
+    let source = "";
+    let cursor = 0;   // position in `current`
+    for (const chunk of diffChunks) {
+      if (cursor < chunk.addStart) {
+        source += current.slice(cursor, chunk.addStart);
+      }
+      source += renderChunkBlock(chunk);
+      cursor = chunk.addEnd;
+    }
+    if (cursor < current.length) {
+      source += current.slice(cursor);
+    }
+    return unwrapFrontmatter(source);
+  }
+
+  function computeDiffChunks(lastSynced, current) {
+    const parts = window.Diff.diffLines(lastSynced, current);
+    const chunks = [];
+    let removePos = 0, addPos = 0, idx = 0;
+    let i = 0;
+    while (i < parts.length) {
+      const p = parts[i];
+      if (!p.added && !p.removed) {
+        removePos += p.value.length;
+        addPos += p.value.length;
+        i++;
+        continue;
+      }
+      const removeStart = removePos;
+      const addStart = addPos;
+      let before = "", after = "";
+      while (i < parts.length && (parts[i].added || parts[i].removed)) {
+        if (parts[i].removed) {
+          before += parts[i].value;
+          removePos += parts[i].value.length;
+        } else if (parts[i].added) {
+          after += parts[i].value;
+          addPos += parts[i].value.length;
+        }
+        i++;
+      }
+      chunks.push({
+        id: "mindle-diff-" + idx++,
+        removeStart, removeEnd: removePos,
+        addStart, addEnd: addPos,
+        before, after
+      });
+    }
+    return chunks;
+  }
+
+  function renderChunkBlock(chunk) {
+    // Pre-render before/after through markdown-it so block markdown
+    // (lists, code fences, headings) inside a chunk renders correctly.
+    // The outer wrapper is a raw HTML block — markdown-it leaves it
+    // alone since blank lines surround it.
+    const beforeHTML = chunk.before.trim() ? md.render(chunk.before) : "";
+    const afterHTML = chunk.after.trim() ? md.render(chunk.after) : "";
+    let body = "";
+    if (beforeHTML) body += '<div class="mindle-diff-removed">' + beforeHTML + '</div>';
+    if (afterHTML)  body += '<div class="mindle-diff-added">'   + afterHTML  + '</div>';
+    const controls =
+      '<div class="mindle-diff-controls">' +
+        '<button data-mindle-diff-action="accept" data-mindle-diff-id="' + chunk.id + '">✓ Keep</button>' +
+        '<button data-mindle-diff-action="reject" data-mindle-diff-id="' + chunk.id + '">✗ Revert</button>' +
+      '</div>';
+    return "\n\n" +
+      '<div class="mindle-diff-chunk" data-mindle-diff-id="' + chunk.id + '">' +
+      body + controls +
+      '</div>' +
+      "\n\n";
+  }
+
+  function attachDiffHandlers() {
+    doc.querySelectorAll('[data-mindle-diff-action]').forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const action = btn.getAttribute("data-mindle-diff-action");
+        const id = btn.getAttribute("data-mindle-diff-id");
+        const chunk = diffChunks.find(c => c.id === id);
+        if (!chunk) return;
+        if (action === "accept") {
+          // Promote this chunk's "after" into the baseline.
+          const newLastSynced =
+            activeLastSynced.slice(0, chunk.removeStart) +
+            chunk.after +
+            activeLastSynced.slice(chunk.removeEnd);
+          postToSwift("diffSetLastSynced", { text: newLastSynced });
+        } else if (action === "reject") {
+          // Revert this chunk's "after" back to the baseline's "before"
+          // — Swift will write through to disk.
+          const newCurrent =
+            activeCurrent.slice(0, chunk.addStart) +
+            chunk.before +
+            activeCurrent.slice(chunk.addEnd);
+          postToSwift("diffSetCurrent", { text: newCurrent });
+        }
+      });
+    });
+  }
 
   window.mindleSetTheme = function (theme) {
     document.documentElement.dataset.theme = theme;

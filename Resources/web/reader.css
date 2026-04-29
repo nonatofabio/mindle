@@ -475,3 +475,85 @@ html.mindle-print-mode .mindle-mermaid {
   color: var(--muted);
   font-style: italic;
 }
+
+/* ------------------------------------------------------------------
+   Diff-on-reload chrome (v1.6).
+   ------------------------------------------------------------------ */
+
+.mindle-diff-chunk {
+  margin: 1.25em 0;
+  padding: 0.75em 1em;
+  border-left: 3px solid var(--accent);
+  background: var(--code-bg);
+  border-radius: 4px;
+}
+
+.mindle-diff-removed,
+.mindle-diff-added {
+  padding: 0.4em 0.75em;
+  border-radius: 3px;
+  margin: 0.25em 0;
+}
+
+.mindle-diff-removed {
+  background: rgba(192, 57, 43, 0.10);
+  text-decoration: line-through;
+  text-decoration-color: rgba(192, 57, 43, 0.55);
+}
+
+.mindle-diff-removed > :first-child { margin-top: 0; }
+.mindle-diff-removed > :last-child  { margin-bottom: 0; }
+
+.mindle-diff-added {
+  background: rgba(39, 174, 96, 0.10);
+}
+
+.mindle-diff-added > :first-child { margin-top: 0; }
+.mindle-diff-added > :last-child  { margin-bottom: 0; }
+
+.mindle-diff-controls {
+  display: flex;
+  gap: 0.5em;
+  margin-top: 0.5em;
+}
+
+.mindle-diff-controls button {
+  font: 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  background: var(--background);
+  color: var(--text);
+  cursor: pointer;
+}
+.mindle-diff-controls button:hover {
+  background: var(--surface);
+}
+.mindle-diff-controls button[data-mindle-diff-action="accept"]:hover {
+  border-color: rgba(39, 174, 96, 0.55);
+  color: rgb(39, 130, 80);
+}
+.mindle-diff-controls button[data-mindle-diff-action="reject"]:hover {
+  border-color: rgba(192, 57, 43, 0.55);
+  color: rgb(160, 50, 40);
+}
+
+/* PDF export hides the diff UI entirely — printed output is the
+   accepted, current text. The chunk wrappers and removed blocks
+   collapse so only the .mindle-diff-added content survives. */
+html.mindle-print-mode .mindle-diff-chunk {
+  background: transparent !important;
+  border-left: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+html.mindle-print-mode .mindle-diff-removed,
+html.mindle-print-mode .mindle-diff-controls {
+  display: none !important;
+}
+html.mindle-print-mode .mindle-diff-added {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
