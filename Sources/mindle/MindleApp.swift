@@ -159,6 +159,14 @@ struct MindleCommands: Commands {
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
             .disabled(store == nil)
+
+            Divider()
+            Button("Keep All Changes") { store?.acceptAllChanges() }
+                .keyboardShortcut(.return, modifiers: [.command, .option])
+                .disabled(!(store?.hasInFlightDiff ?? false))
+            Button("Revert All Changes") { store?.rejectAllChanges() }
+                .keyboardShortcut(.delete, modifiers: [.command, .option])
+                .disabled(!(store?.hasInFlightDiff ?? false))
         }
 
         CommandGroup(after: .textEditing) {

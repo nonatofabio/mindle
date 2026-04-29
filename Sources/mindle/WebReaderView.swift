@@ -12,6 +12,8 @@ struct WebReaderView: NSViewRepresentable {
         userContent.add(context.coordinator, name: "selectionChanged")
         userContent.add(context.coordinator, name: "annotationClicked")
         userContent.add(context.coordinator, name: "searchResult")
+        userContent.add(context.coordinator, name: "diffSetLastSynced")
+        userContent.add(context.coordinator, name: "diffSetCurrent")
         config.userContentController = userContent
         config.setURLSchemeHandler(ImageSchemeHandler(), forURLScheme: ImageSchemeHandler.scheme)
         config.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -34,16 +36,27 @@ struct WebReaderView: NSViewRepresentable {
         let coord = context.coordinator
         guard coord.loaded else { return }
 
-        // Only push values that actually changed to avoid resetting DOM/selection
-        if store.rawText != coord.lastSource {
-            // Same file, content changed → live reload, preserve scroll.
+        // Re-render whenever rawText OR lastSyncedText changes — the diff
+        // pipeline keys off the pair, so a baseline change has to flow
+        // through to the view even when rawText is unchanged.
+        if store.rawText != coord.lastSource || store.lastSyncedText != coord.lastSyncedText {
+            // Same file, rawText changed → live reload, preserve scroll.
             // Different file (or first load) → fresh load, start at top.
+            // Baseline-only change (accept/reject) preserves scroll too.
             let isLiveReload = (coord.lastFileURL == store.fileURL && !coord.lastSource.isEmpty)
             coord.lastSource = store.rawText
+            coord.lastSyncedText = store.lastSyncedText
             coord.lastFileURL = store.fileURL
             let baseDir = store.fileURL?.deletingLastPathComponent().path ?? ""
+            // mindleLoad's third arg is the diff baseline: when it differs
+            // from arg one, the JS layer renders track-changes with chips.
+            // Pass null when there's no in-flight diff so the JS hot path
+            // skips the diff machinery entirely.
+            let baselineLiteral = (store.lastSyncedText == store.rawText)
+                ? "null"
+                : jsString(store.lastSyncedText)
             web.evaluateJavaScript("window.mindleSetBaseDir(\(jsString(baseDir)));")
-            web.evaluateJavaScript("window.mindleLoad(\(jsString(store.rawText)), \(isLiveReload));")
+            web.evaluateJavaScript("window.mindleLoad(\(jsString(store.rawText)), \(isLiveReload), \(baselineLiteral));")
         }
 
         if store.theme.rawValue != coord.lastTheme {
@@ -109,6 +122,7 @@ struct WebReaderView: NSViewRepresentable {
 
         // Track last-sent values to avoid redundant pushes
         var lastSource: String = ""
+        var lastSyncedText: String = ""
         var lastFileURL: URL?
         var lastTheme: String = ""
         var lastFontScale: Double = 0
@@ -210,6 +224,7 @@ struct WebReaderView: NSViewRepresentable {
             loaded = true
             // Force initial flush by clearing tracked state
             lastSource = ""
+            lastSyncedText = ""
             lastFileURL = nil
             lastTheme = ""
             lastFontScale = 0
@@ -259,6 +274,26 @@ struct WebReaderView: NSViewRepresentable {
                 let current = (body["current"] as? Int) ?? 0
                 Task { @MainActor in
                     self.parent.store.updateSearchResult(total: total, current: current)
+                }
+
+            case "diffSetLastSynced":
+                // Per-chunk accept: JS computed a new baseline incorporating
+                // the chunk's "after" content. Swift just stores it; the
+                // re-render shows the now-shrunk diff.
+                guard let body = message.body as? [String: Any],
+                      let text = body["text"] as? String else { return }
+                Task { @MainActor in
+                    self.parent.store.setLastSyncedText(text)
+                }
+
+            case "diffSetCurrent":
+                // Per-chunk reject: JS computed a new current text where
+                // the chunk's "after" was reverted to the baseline's
+                // "before". Swift writes that through to disk.
+                guard let body = message.body as? [String: Any],
+                      let text = body["text"] as? String else { return }
+                Task { @MainActor in
+                    self.parent.store.setRawText(text)
                 }
 
             default: break
