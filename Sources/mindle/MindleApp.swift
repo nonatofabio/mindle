@@ -104,6 +104,10 @@ struct MindleCommands: Commands {
             Button("About Mindle") { showAboutPanel() }
             Divider()
             CheckForUpdatesView()
+            Divider()
+            Button("Set as Default for Markdown…") {
+                showDefaultHandlerInstructions(currentFile: store?.fileURL)
+            }
         }
 
         CommandGroup(replacing: .newItem) {
@@ -218,6 +222,34 @@ struct CheckForUpdatesView: View {
         Button("Check for Updates…") {
             AppDelegate.shared?.updaterController.checkForUpdates(nil)
         }
+    }
+}
+
+/// Programmatic default-handler changes are blocked by the OS unless the
+/// app is notarized + trusted, so we don't try. Instead, walk the user
+/// through the Finder Get Info path that always works. If a Markdown
+/// file is currently open, offer to reveal it so the user can hit ⌘I.
+@MainActor
+private func showDefaultHandlerInstructions(currentFile: URL?) {
+    let alert = NSAlert()
+    alert.messageText = "Make Mindle the default for Markdown"
+    alert.informativeText = """
+    macOS reserves default-app changes to a manual step. Here's how:
+
+    1. In Finder, right-click any .md file → Get Info (⌘I).
+    2. Expand "Open with".
+    3. Pick Mindle.
+    4. Click "Change All…" to apply to every .md file.
+    """
+    alert.alertStyle = .informational
+    if currentFile != nil {
+        alert.addButton(withTitle: "Reveal Current File")
+    }
+    alert.addButton(withTitle: "OK")
+
+    let response = alert.runModal()
+    if currentFile != nil, response == .alertFirstButtonReturn, let url = currentFile {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }
 
