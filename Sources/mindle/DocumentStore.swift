@@ -25,14 +25,19 @@ struct FileNode: Identifiable, Equatable {
 }
 
 /// One open document inside a window. Active-tab state still lives in
-/// the window-scoped @Published vars (`fileURL`, `rawText`, `annotations`)
-/// so all existing features keep working untouched; inactive tabs are
-/// snapshotted here and rehydrated on activate.
+/// the window-scoped @Published vars (`fileURL`, `rawText`, `annotations`,
+/// `lastSyncedText`) so all existing features keep working untouched;
+/// inactive tabs are snapshotted here and rehydrated on activate.
 struct DocumentTab: Identifiable, Equatable {
     let id: UUID
     var fileURL: URL
     var rawText: String
     var annotations: [Annotation]
+    /// Baseline against which diff-on-reload compares. Equals `rawText`
+    /// when there are no in-flight external edits. When an external write
+    /// updates `rawText`, this stays at the previously-reviewed version
+    /// until the user accepts the change.
+    var lastSyncedText: String
 }
 
 @MainActor
@@ -40,6 +45,11 @@ final class DocumentStore: ObservableObject {
     @Published var fileURL: URL?
     @Published var rawText: String = ""
     @Published var annotations: [Annotation] = []
+    /// Baseline for diff-on-reload. When `lastSyncedText != rawText`, the
+    /// reader view shows track-changes between the two. Accepting clears
+    /// the diff (lastSyncedText := rawText); rejecting reverts the
+    /// document on disk (rawText := lastSyncedText, written through).
+    @Published var lastSyncedText: String = ""
 
     @Published var theme: ReaderTheme = .sepia
     @Published var fontScale: Double = 1.0
@@ -122,7 +132,7 @@ final class DocumentStore: ObservableObject {
             // returns to it.
             snapshotActiveTab()
 
-            let newTab = DocumentTab(id: UUID(), fileURL: url, rawText: text, annotations: [])
+            let newTab = DocumentTab(id: UUID(), fileURL: url, rawText: text, annotations: [], lastSyncedText: text)
             tabs.append(newTab)
             activeTabID = newTab.id
 
@@ -133,6 +143,7 @@ final class DocumentStore: ObservableObject {
 
             self.fileURL = url
             self.rawText = text
+            self.lastSyncedText = text
             self.annotations = []
             self.loadSidecar()
 
@@ -218,6 +229,7 @@ final class DocumentStore: ObservableObject {
             activeTabID = nil
             fileURL = nil
             rawText = ""
+            lastSyncedText = ""
             annotations = []
             closeSearch()
             focusedAnnotation = nil
@@ -234,11 +246,13 @@ final class DocumentStore: ObservableObject {
         tabs[i].fileURL = url
         tabs[i].rawText = rawText
         tabs[i].annotations = annotations
+        tabs[i].lastSyncedText = lastSyncedText
     }
 
     private func loadTabState(_ tab: DocumentTab) {
         fileURL = tab.fileURL
         rawText = tab.rawText
+        lastSyncedText = tab.lastSyncedText
         annotations = tab.annotations
         closeSearch()
         focusedAnnotation = nil
@@ -367,6 +381,64 @@ final class DocumentStore: ObservableObject {
         focusedAnnotation = id
     }
 
+    // MARK: - Diff review (v1.6)
+
+    /// True while the on-disk text has diverged from the user's last
+    /// reviewed baseline — i.e., an external edit landed and hasn't
+    /// been accepted or rejected yet.
+    var hasInFlightDiff: Bool { lastSyncedText != rawText }
+
+    /// Accept all in-flight changes: the new text becomes the baseline.
+    /// No file mutation — the disk already has the new text.
+    func acceptAllChanges() {
+        guard hasInFlightDiff else { return }
+        lastSyncedText = rawText
+        snapshotActiveTab()
+        saveSidecar()
+    }
+
+    /// Reject all in-flight changes: write the baseline back to disk.
+    /// The watcher will fire on the rewrite and reloadFromDisk no-ops
+    /// (rawText already matches), so we're not racing with ourselves.
+    func rejectAllChanges() {
+        guard hasInFlightDiff, let url = fileURL else { return }
+        let reverted = lastSyncedText
+        rawText = reverted
+        do {
+            try reverted.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            NSSound.beep()
+        }
+        snapshotActiveTab()
+        saveSidecar()
+    }
+
+    /// JS-side accept of a single chunk produces a new lastSyncedText
+    /// that incorporates that chunk's "after" content. Swift just stores
+    /// it; the WebView re-renders the now-smaller diff.
+    func setLastSyncedText(_ text: String) {
+        guard text != lastSyncedText else { return }
+        lastSyncedText = text
+        snapshotActiveTab()
+        saveSidecar()
+    }
+
+    /// JS-side reject of a single chunk produces a new rawText that
+    /// reverts that chunk to its "before" content. Swift writes through
+    /// to disk; the watcher will reflect the rewrite without re-firing
+    /// the diff render (rawText already matches).
+    func setRawText(_ text: String) {
+        guard text != rawText, let url = fileURL else { return }
+        rawText = text
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            NSSound.beep()
+        }
+        snapshotActiveTab()
+        saveSidecar()
+    }
+
     // MARK: - PDF export
 
     var canExportPDF: Bool { fileURL != nil }
@@ -415,6 +487,12 @@ final class DocumentStore: ObservableObject {
         var annotations: [Annotation]
         var theme: ReaderTheme?
         var fontScale: Double?
+        /// Persisted only when the user has an unfinished diff review —
+        /// i.e., `lastSyncedText != rawText`. On reopen, this restores the
+        /// review state so a closed-and-relaunched window picks up where
+        /// it left off. Nil when there's no in-flight diff (the common
+        /// case), so existing v1.5 sidecars decode cleanly.
+        var lastSyncedText: String?
     }
 
     private func loadSidecar() {
@@ -426,25 +504,35 @@ final class DocumentStore: ObservableObject {
             annotations = decoded.annotations
             if let t = decoded.theme { theme = t }
             if let s = decoded.fontScale { fontScale = s }
+            if let baseline = decoded.lastSyncedText {
+                lastSyncedText = baseline
+            }
         }
     }
 
     func saveSidecar() {
         guard let url = sidecarURL else { return }
-        writeSidecar(to: url, annotations: annotations)
+        let baseline = (lastSyncedText != rawText) ? lastSyncedText : nil
+        writeSidecar(to: url, annotations: annotations, lastSynced: baseline)
     }
 
     private func saveSidecar(forTab tab: DocumentTab) {
         let url = tab.fileURL.deletingLastPathComponent()
             .appendingPathComponent(".\(tab.fileURL.lastPathComponent).mindle.json")
-        writeSidecar(to: url, annotations: tab.annotations)
+        let baseline = (tab.lastSyncedText != tab.rawText) ? tab.lastSyncedText : nil
+        writeSidecar(to: url, annotations: tab.annotations, lastSynced: baseline)
     }
 
-    private func writeSidecar(to url: URL, annotations: [Annotation]) {
+    private func writeSidecar(to url: URL, annotations: [Annotation], lastSynced: String?) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        let sidecar = Sidecar(annotations: annotations, theme: theme, fontScale: fontScale)
+        let sidecar = Sidecar(
+            annotations: annotations,
+            theme: theme,
+            fontScale: fontScale,
+            lastSyncedText: lastSynced
+        )
         if let data = try? encoder.encode(sidecar) {
             try? data.write(to: url, options: .atomic)
         }
