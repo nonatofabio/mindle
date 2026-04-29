@@ -32,3 +32,19 @@ func greet(_ name: String) -> String {
 ---
 
 *Happy reading.*
+
+## Math (KaTeX)
+
+Inline: when $a^2 + b^2 = c^2$ holds, we have a right triangle. Greek: $\alpha + \beta = \gamma$.
+
+Display:
+
+$$
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+$$
+
+$$
+\int_{-\infty}^{\infty} e^{-x^2} \, dx = \sqrt{\pi}
+$$
+
+Dollar amounts stay plain text: it cost $5 and we paid $10 total.
