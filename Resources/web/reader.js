@@ -21,6 +21,118 @@
   if (window.markdownitTaskLists) md.use(window.markdownitTaskLists, { enabled: true, label: true });
   if (window.markdownitFootnote) md.use(window.markdownitFootnote);
   if (window.markdownItAnchor) md.use(window.markdownItAnchor, { permalink: false });
+  if (window.katex) md.use(mathPlugin);
+
+  // -------- Inline + display math (KaTeX) --------
+  // Inline:  $...$    — opening $ must not be followed by whitespace,
+  //                     closing $ must not be preceded by whitespace,
+  //                     and must not be followed by a digit (so dollar
+  //                     amounts like "$5 and $10" don't get matched).
+  // Display: $$...$$  — block, on its own line(s).
+  function mathPlugin(md) {
+    function isWhitespace(code) {
+      return code === 0x20 || code === 0x09 || code === 0x0A || code === 0x0D;
+    }
+    function isDigit(code) { return code >= 0x30 && code <= 0x39; }
+    function isEscaped(src, pos) {
+      let n = 0;
+      while (pos > 0 && src.charCodeAt(pos - 1) === 0x5C) { n++; pos--; }
+      return n % 2 === 1;
+    }
+
+    function mathInline(state, silent) {
+      const src = state.src;
+      if (src.charCodeAt(state.pos) !== 0x24) return false;          // not $
+      if (isEscaped(src, state.pos)) return false;
+      const after = src.charCodeAt(state.pos + 1);
+      if (isNaN(after) || isWhitespace(after)) return false;          // $ <space>
+
+      let pos = state.pos + 1;
+      while (pos < state.posMax) {
+        if (src.charCodeAt(pos) === 0x24 && !isEscaped(src, pos)) {
+          const before = src.charCodeAt(pos - 1);
+          if (!isWhitespace(before)) {
+            const next = src.charCodeAt(pos + 1);
+            if (!isDigit(next)) break;                                // valid close
+          }
+        }
+        pos++;
+      }
+      if (pos >= state.posMax) return false;
+      if (pos === state.pos + 1) return false;                        // empty $$
+
+      if (!silent) {
+        const token = state.push("math_inline", "math", 0);
+        token.markup = "$";
+        token.content = src.slice(state.pos + 1, pos);
+      }
+      state.pos = pos + 1;
+      return true;
+    }
+
+    function mathBlock(state, startLine, endLine, silent) {
+      const lineStart = state.bMarks[startLine] + state.tShift[startLine];
+      const lineEnd = state.eMarks[startLine];
+      const firstLine = state.src.slice(lineStart, lineEnd).trimEnd();
+      if (firstLine.slice(0, 2) !== "$$") return false;
+
+      // Single-line $$...$$
+      if (firstLine.length >= 4 && firstLine.endsWith("$$")) {
+        if (silent) return true;
+        const token = state.push("math_block", "math", 0);
+        token.markup = "$$";
+        token.content = firstLine.slice(2, -2).trim();
+        token.map = [startLine, startLine + 1];
+        state.line = startLine + 1;
+        return true;
+      }
+
+      // Multi-line: scan for closing $$ on its own line
+      let line = startLine + 1;
+      let found = false;
+      while (line < endLine) {
+        const ls = state.bMarks[line] + state.tShift[line];
+        const le = state.eMarks[line];
+        if (state.src.slice(ls, le).trimEnd() === "$$") { found = true; break; }
+        line++;
+      }
+      if (!found) return false;
+      if (silent) return true;
+
+      const contentStart = state.bMarks[startLine + 1];
+      const contentEnd = state.bMarks[line];
+      const content = state.src.slice(contentStart, contentEnd).trim();
+
+      const token = state.push("math_block", "math", 0);
+      token.markup = "$$";
+      token.content = (firstLine.length > 2 ? firstLine.slice(2).trim() + "\n" : "") + content;
+      token.map = [startLine, line + 1];
+      state.line = line + 1;
+      return true;
+    }
+
+    md.inline.ruler.after("escape", "math_inline", mathInline);
+    md.block.ruler.after("blockquote", "math_block", mathBlock, {
+      alt: ["paragraph", "reference", "blockquote", "list"]
+    });
+
+    md.renderer.rules.math_inline = function (tokens, idx) {
+      try {
+        return window.katex.renderToString(tokens[idx].content, { throwOnError: false });
+      } catch (_) {
+        return md.utils.escapeHtml(tokens[idx].content);
+      }
+    };
+    md.renderer.rules.math_block = function (tokens, idx) {
+      try {
+        return '<div class="mindle-math-block">' +
+          window.katex.renderToString(tokens[idx].content, { displayMode: true, throwOnError: false }) +
+          '</div>';
+      } catch (_) {
+        return '<pre>' + md.utils.escapeHtml(tokens[idx].content) + '</pre>';
+      }
+    };
+  }
 
   // Allow file: URLs (we rewrite them to our custom scheme) and preserve data:
   // URLs intact so base64 payloads aren't percent-encoded to death. Still block
