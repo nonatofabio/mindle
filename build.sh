@@ -67,6 +67,78 @@ cp -R Frameworks/Sparkle.framework "$APP_BUNDLE/Contents/Frameworks/"
 # -------- Copy web resources (HTML/CSS/JS + vendor libs) --------
 cp -R Resources/web "$APP_BUNDLE/Contents/Resources/web"
 
+# -------- Build Quick Look extension --------
+echo "→ Compiling Quick Look extension…"
+EXT_BIN="build/MindleQuickLook"
+EXT_BUNDLE="$APP_BUNDLE/Contents/PlugIns/MindleQuickLook.appex"
+
+# App extensions don't define `main` themselves — they use NSExtensionMain
+# (provided by Foundation) as the entry point. -module-name pins the
+# Swift module so Info.plist's NSExtensionPrincipalClass resolves.
+swiftc -O \
+  -target arm64-apple-macos14.0 \
+  -module-name MindleQuickLook \
+  -framework Cocoa -framework Foundation -framework Quartz -framework WebKit \
+  -Xlinker -e -Xlinker _NSExtensionMain \
+  Sources/MindleQuickLook/*.swift \
+  -o "$EXT_BIN"
+
+echo "→ Assembling Quick Look extension bundle…"
+mkdir -p "$EXT_BUNDLE/Contents/MacOS"
+mkdir -p "$EXT_BUNDLE/Contents/Resources"
+cp "$EXT_BIN" "$EXT_BUNDLE/Contents/MacOS/MindleQuickLook"
+# Reuse the same web pipeline the main app renders with — markdown-it,
+# highlight.js, mermaid, the lot. Quick Look previews look identical.
+cp -R Resources/web "$EXT_BUNDLE/Contents/Resources/web"
+
+cat > "$EXT_BUNDLE/Contents/Info.plist" <<EXTPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>MindleQuickLook</string>
+  <key>CFBundleDisplayName</key>
+  <string>Mindle Quick Look</string>
+  <key>CFBundleExecutable</key>
+  <string>MindleQuickLook</string>
+  <key>CFBundleIdentifier</key>
+  <string>local.fnp.mindle.quicklook</string>
+  <key>CFBundleVersion</key>
+  <string>${BUILD_NUMBER}</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${SHORT_VERSION}</string>
+  <key>CFBundlePackageType</key>
+  <string>XPC!</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>NSExtension</key>
+  <dict>
+    <key>NSExtensionPointIdentifier</key>
+    <string>com.apple.quicklook.preview</string>
+    <key>NSExtensionPrincipalClass</key>
+    <string>MindleQuickLook.PreviewViewController</string>
+    <key>NSExtensionAttributes</key>
+    <dict>
+      <!-- public.plain-text is the broadest catch — needed because macOS
+           assigns markdown files an "untrusted" generated UTI when the
+           parent app's UTI export isn't trusted (no notarization at
+           install time, etc.). The extension itself filters by file
+           extension in preparePreviewOfFile, so we only render
+           markdown-flavoured paths. -->
+      <key>QLSupportedContentTypes</key>
+      <array>
+        <string>net.daringfireball.markdown</string>
+        <string>public.plain-text</string>
+      </array>
+      <key>QLSupportsSearchableItems</key>
+      <false/>
+    </dict>
+  </dict>
+</dict>
+</plist>
+EXTPLIST
+
 # -------- Icon generation from assets/logo.svg --------
 if [ -f "assets/logo.svg" ]; then
   echo "→ Generating app icon…"
@@ -169,7 +241,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
       </array>
     </dict>
   </array>
-  <key>UTImportedTypeDeclarations</key>
+  <key>UTExportedTypeDeclarations</key>
   <array>
     <dict>
       <key>UTTypeIdentifier</key>
@@ -200,7 +272,17 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - --deep "$APP_BUNDLE" 2>/dev/null || true
+# -------- Code sign (inside-out, manual) --------
+# Hardened Runtime on the parent app would block WKWebView's JIT and
+# Sparkle's framework loading without entitlements that we don't ship
+# locally — release CI handles it via the full notarization pipeline.
+# Local ad-hoc signs the parent without runtime; the extension still
+# needs runtime so pluginkit will pick it up.
+# Sparkle.framework is already signed by upstream — leave it alone.
+codesign --force --sign - --options runtime \
+  --entitlements Resources/MindleQuickLook.entitlements \
+  "$EXT_BUNDLE" 2>/dev/null || true
+codesign --force --sign - "$APP_BUNDLE" 2>/dev/null || true
 
 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
   -f "$APP_BUNDLE" 2>/dev/null || true
