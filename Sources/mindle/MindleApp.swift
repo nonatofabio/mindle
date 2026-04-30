@@ -9,6 +9,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingURLs: [URL] = []
     private weak var activeStore: DocumentStore?
 
+    // Weak refs to every DocumentStore that's been registered (one per
+    // open window). Used by the MCP server to aggregate `list_open_files`
+    // across all windows. Cleaned up lazily on register/lookup.
+    private struct WeakStoreRef { weak var store: DocumentStore? }
+    private var registeredStores: [WeakStoreRef] = []
+
     // Sparkle updater: instantiated once per app lifecycle. startingUpdater
     // true lets Sparkle schedule its own background check if the user has
     // opted into automatic updates. On first launch after a version that
@@ -26,6 +32,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppDelegate.shared = self
     }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // MCP server lives for the app lifetime — opens its socket on
+        // launch and tears it down on terminate. The bundled mindle-mcp
+        // helper proxies stdio MCP into this socket.
+        MCPServer.shared.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        MCPServer.shared.stop()
+    }
+
+    /// Aggregated set of file paths currently open across every window's
+    /// tabs. Called from the MCP server on the main actor.
+    func allOpenFilePaths() -> [String] {
+        registeredStores.removeAll { $0.store == nil }
+        var seen: Set<String> = []
+        var ordered: [String] = []
+        for ref in registeredStores {
+            guard let store = ref.store else { continue }
+            for tab in store.tabs {
+                let p = tab.fileURL.path
+                if seen.insert(p).inserted { ordered.append(p) }
+            }
+        }
+        return ordered
+    }
+
     func application(_ sender: NSApplication, open urls: [URL]) {
         if let store = activeStore {
             for url in urls {
@@ -41,8 +74,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Each window's RootView calls this on appear, so the most recently
     /// active window becomes the target for externally opened URLs.
+    /// Also tracks the store in `registeredStores` (weak) so the MCP
+    /// server can aggregate open files across every window.
     func register(store: DocumentStore) {
         activeStore = store
+        registeredStores.removeAll { $0.store == nil }
+        if !registeredStores.contains(where: { $0.store === store }) {
+            registeredStores.append(WeakStoreRef(store: store))
+        }
         if !pendingURLs.isEmpty {
             let queued = pendingURLs
             pendingURLs.removeAll()
