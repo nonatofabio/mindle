@@ -68,6 +68,17 @@ cp -R Frameworks/Sparkle.framework "$APP_BUNDLE/Contents/Frameworks/"
 cp -R Resources/web "$APP_BUNDLE/Contents/Resources/web"
 
 # -------- Build Quick Look extension --------
+echo "→ Compiling mindle-mcp helper…"
+MCP_BIN="build/mindle-mcp"
+swiftc -O \
+  -target arm64-apple-macos14.0 \
+  -parse-as-library \
+  -framework Foundation \
+  Sources/MindleMCP/*.swift \
+  -o "$MCP_BIN"
+
+cp "$MCP_BIN" "$APP_BUNDLE/Contents/MacOS/mindle-mcp"
+
 echo "→ Compiling Quick Look extension…"
 EXT_BIN="build/MindleQuickLook"
 EXT_BUNDLE="$APP_BUNDLE/Contents/PlugIns/MindleQuickLook.appex"
