@@ -59,6 +59,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return ordered
     }
 
+    /// Find the first store that has `path` open and return its
+    /// annotations. Returns nil if the file isn't open in any window —
+    /// the agent should first call `list_open_files` to see what's
+    /// available.
+    func annotations(forPath path: String) -> [Annotation]? {
+        registeredStores.removeAll { $0.store == nil }
+        for ref in registeredStores {
+            if let anns = ref.store?.annotations(forPath: path) {
+                return anns
+            }
+        }
+        return nil
+    }
+
+    /// Remove the annotation with the given id from whichever store has
+    /// the file open. Returns true on success. The summary captures the
+    /// agent's description of what it did to address the annotation —
+    /// stashed for now, surfaced in the UI in Phase 3.
+    func clearAnnotation(forPath path: String, id: UUID, summary: String) -> Bool {
+        registeredStores.removeAll { $0.store == nil }
+        for ref in registeredStores {
+            guard let store = ref.store else { continue }
+            if store.removeAnnotation(forPath: path, id: id, summary: summary) {
+                return true
+            }
+        }
+        return false
+    }
+
     func application(_ sender: NSApplication, open urls: [URL]) {
         if let store = activeStore {
             for url in urls {

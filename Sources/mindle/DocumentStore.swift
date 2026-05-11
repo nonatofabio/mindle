@@ -377,6 +377,49 @@ final class DocumentStore: ObservableObject {
         saveSidecar()
     }
 
+    /// MCP-side annotation lookup. Returns the annotations for whichever
+    /// tab in this window has `fileURL.path == path`, or nil if no tab
+    /// matches. Caller (AppDelegate) iterates every store to find a hit.
+    func annotations(forPath path: String) -> [Annotation]? {
+        if let active = activeTabID,
+           let tab = tabs.first(where: { $0.id == active }),
+           tab.fileURL.path == path {
+            // Active tab — in-memory annotations are authoritative.
+            return annotations
+        }
+        if let tab = tabs.first(where: { $0.fileURL.path == path }) {
+            return tab.annotations
+        }
+        return nil
+    }
+
+    /// MCP-side annotation clear. Removes the annotation with the given
+    /// id from the matching tab and persists the sidecar. Returns true
+    /// if a tab matched and the annotation was found+removed. The
+    /// summary is stashed in NSLog for now — Phase 3 surfaces it in the
+    /// UI as a chip next to the corresponding diff chunk.
+    @discardableResult
+    func removeAnnotation(forPath path: String, id: UUID, summary: String) -> Bool {
+        NSLog("[mindle.mcp] clear_annotation path=%@ id=%@ summary=%@", path, id.uuidString, summary)
+        if let active = activeTabID,
+           let i = tabs.firstIndex(where: { $0.id == active }),
+           tabs[i].fileURL.path == path {
+            guard annotations.contains(where: { $0.id == id }) else { return false }
+            annotations.removeAll { $0.id == id }
+            // saveSidecar() pulls from in-memory annotations of the
+            // active tab, so this persists correctly.
+            saveSidecar()
+            return true
+        }
+        if let i = tabs.firstIndex(where: { $0.fileURL.path == path }) {
+            guard tabs[i].annotations.contains(where: { $0.id == id }) else { return false }
+            tabs[i].annotations.removeAll { $0.id == id }
+            saveSidecar(forTab: tabs[i])
+            return true
+        }
+        return false
+    }
+
     func jumpTo(id: UUID) {
         focusedAnnotation = id
     }

@@ -6,9 +6,10 @@ import Darwin
 // over the running Mindle's Unix socket, and emits the JSON-RPC response
 // on stdout.
 //
-// Read-only by design: Mindle exposes only what no other tool can —
-// open-files state and the annotation feedback channel. Filesystem reads
-// belong in the agent's normal Read tool, not here.
+// Mindle exposes only the annotation feedback channel — what's open,
+// what the user has annotated, and a way for the agent to mark an
+// annotation as addressed. File IO (reads, writes) belongs in the
+// agent's normal filesystem tools, not here.
 
 @main
 struct MindleMCP {
@@ -98,16 +99,54 @@ struct MindleMCP {
         ]
     }
 
-    // MARK: - Tool surface (Phase 1: list_open_files only)
+    // MARK: - Tool surface
 
     private static func toolDefinitions() -> [[String: Any]] {
         return [
             [
                 "name": "list_open_files",
-                "description": "List the absolute paths of every Markdown file currently open in Mindle (across all windows and tabs). Use this to see what the user is reading right now.",
+                "description": "List the absolute paths of every file currently open in Mindle (across all windows and tabs). Use this to see what the user is reading right now.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [String: Any](),
+                    "additionalProperties": false
+                ]
+            ],
+            [
+                "name": "get_annotations",
+                "description": "Return every annotation (highlight or note) the user has placed on a file currently open in Mindle. Each annotation includes its id, the highlighted text verbatim, surrounding context, the user's note (often empty for plain highlights), and a creation timestamp. Use the annotation as the user's instruction to you: read it, address it with your normal file-editing tools, then call clear_annotation to mark it done.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "path": [
+                            "type": "string",
+                            "description": "Absolute path to the file. Must be a file currently open in Mindle — call list_open_files first if unsure."
+                        ]
+                    ],
+                    "required": ["path"],
+                    "additionalProperties": false
+                ]
+            ],
+            [
+                "name": "clear_annotation",
+                "description": "Mark an annotation as addressed and remove it from the file's sidebar. Provide a short summary of what you did so the user can see in their review pass. Call this after you've actually edited the file to address what the annotation asked for — clearing without addressing leaves the user confused.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "path": [
+                            "type": "string",
+                            "description": "Absolute path to the file the annotation lives on."
+                        ],
+                        "id": [
+                            "type": "string",
+                            "description": "The annotation's UUID, as returned by get_annotations."
+                        ],
+                        "summary": [
+                            "type": "string",
+                            "description": "One short sentence describing what you changed. Example: 'Rephrased the intro paragraph to be more concise.'"
+                        ]
+                    ],
+                    "required": ["path", "id", "summary"],
                     "additionalProperties": false
                 ]
             ]
@@ -118,6 +157,7 @@ struct MindleMCP {
         guard let name = params["name"] as? String else {
             return errorContent("missing tool name")
         }
+        let arguments = (params["arguments"] as? [String: Any]) ?? [:]
         switch name {
         case "list_open_files":
             return callMindle(op: "list_open_files", body: [:]) { resp in
@@ -130,6 +170,46 @@ struct MindleMCP {
                 let listing = files.map { "- \($0)" }.joined(separator: "\n")
                 return textContent("Files currently open in Mindle:\n\n\(listing)")
             }
+
+        case "get_annotations":
+            guard let path = arguments["path"] as? String else {
+                return errorContent("missing required argument: path")
+            }
+            return callMindle(op: "get_annotations", body: ["path": path]) { resp in
+                guard let anns = resp["annotations"] as? [[String: Any]] else {
+                    return errorContent("malformed response from Mindle")
+                }
+                if anns.isEmpty {
+                    return textContent("No annotations on \(path).")
+                }
+                var lines: [String] = ["Annotations on \(path):", ""]
+                for (i, ann) in anns.enumerated() {
+                    let id = (ann["id"] as? String) ?? "?"
+                    let text = (ann["text"] as? String) ?? ""
+                    let note = (ann["note"] as? String) ?? ""
+                    lines.append("\(i + 1). [id: \(id)]")
+                    lines.append("   Selected: \(text.replacingOccurrences(of: "\n", with: " "))")
+                    if !note.isEmpty {
+                        lines.append("   Note: \(note)")
+                    }
+                    lines.append("")
+                }
+                return textContent(lines.joined(separator: "\n"))
+            }
+
+        case "clear_annotation":
+            guard let path = arguments["path"] as? String,
+                  let id = arguments["id"] as? String,
+                  let summary = arguments["summary"] as? String else {
+                return errorContent("missing required arguments: path, id, summary")
+            }
+            return callMindle(
+                op: "clear_annotation",
+                body: ["path": path, "id": id, "summary": summary]
+            ) { _ in
+                return textContent("Cleared annotation \(id) on \(path).")
+            }
+
         default:
             return errorContent("unknown tool: \(name)")
         }

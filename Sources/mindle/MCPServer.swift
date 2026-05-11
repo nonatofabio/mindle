@@ -150,6 +150,51 @@ final class MCPServer {
         case "list_open_files":
             let files = await MainActor.run { AppDelegate.shared?.allOpenFilePaths() ?? [] }
             return ["ok": true, "files": files]
+
+        case "get_annotations":
+            guard let path = request["path"] as? String else {
+                return ["ok": false, "error": "missing 'path'"]
+            }
+            let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+            let result: [[String: Any]]? = await MainActor.run {
+                guard let anns = AppDelegate.shared?.annotations(forPath: normalized) else {
+                    return nil
+                }
+                return anns.map { ann -> [String: Any] in
+                    [
+                        "id": ann.id.uuidString,
+                        "text": ann.text,
+                        "prefix": ann.prefix,
+                        "suffix": ann.suffix,
+                        "note": ann.note,
+                        "createdAt": ISO8601DateFormatter().string(from: ann.createdAt)
+                    ]
+                }
+            }
+            guard let annotations = result else {
+                return ["ok": false, "error": "file not open in Mindle: \(path)"]
+            }
+            return ["ok": true, "annotations": annotations]
+
+        case "clear_annotation":
+            guard let path = request["path"] as? String else {
+                return ["ok": false, "error": "missing 'path'"]
+            }
+            guard let idStr = request["id"] as? String, let id = UUID(uuidString: idStr) else {
+                return ["ok": false, "error": "missing or malformed 'id' (expected UUID string)"]
+            }
+            let summary = (request["summary"] as? String) ?? ""
+            let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+            let removed = await MainActor.run {
+                AppDelegate.shared?.clearAnnotation(
+                    forPath: normalized, id: id, summary: summary
+                ) ?? false
+            }
+            if removed {
+                return ["ok": true]
+            }
+            return ["ok": false, "error": "annotation not found (file may not be open or id is stale)"]
+
         default:
             return ["ok": false, "error": "unknown op: \(op)"]
         }
