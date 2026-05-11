@@ -14,6 +14,8 @@ struct WebReaderView: NSViewRepresentable {
         userContent.add(context.coordinator, name: "searchResult")
         userContent.add(context.coordinator, name: "diffSetLastSynced")
         userContent.add(context.coordinator, name: "diffSetCurrent")
+        userContent.add(context.coordinator, name: "diffAcceptAll")
+        userContent.add(context.coordinator, name: "diffRejectAll")
         config.userContentController = userContent
         config.setURLSchemeHandler(ImageSchemeHandler(), forURLScheme: ImageSchemeHandler.scheme)
         config.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -294,6 +296,16 @@ struct WebReaderView: NSViewRepresentable {
                       let text = body["text"] as? String else { return }
                 Task { @MainActor in
                     self.parent.store.setRawText(text)
+                }
+
+            case "diffAcceptAll":
+                Task { @MainActor in
+                    self.parent.store.acceptAllChanges()
+                }
+
+            case "diffRejectAll":
+                Task { @MainActor in
+                    self.parent.store.rejectAllChanges()
                 }
 
             default: break

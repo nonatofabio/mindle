@@ -237,7 +237,12 @@
     // Switching documents clears search state; annotations are replayed below.
     searchState = { query: "", current: 0, total: 0, matchSets: [] };
     await applyAll();
-    if (showDiff) attachDiffHandlers();
+    if (showDiff) {
+      attachDiffHandlers();
+      injectDiffBanner();
+    } else {
+      removeDiffBanner();
+    }
     reportSearchResult();
     if (preserveScroll) {
       // applyAll's mermaid pass can settle in another frame; restore on
@@ -327,6 +332,42 @@
       body + controls +
       '</div>' +
       "\n\n";
+  }
+
+  function removeDiffBanner() {
+    const existing = document.getElementById("mindle-diff-banner");
+    if (existing) existing.remove();
+  }
+
+  // Sticky banner at the top of the article when a diff is in flight.
+  // Gives users a one-click path to keep or revert every chunk at once
+  // instead of clicking through each pair — the inline buttons remain
+  // for granular review.
+  function injectDiffBanner() {
+    removeDiffBanner();
+    const count = diffChunks.length;
+    if (count === 0) return;
+    const banner = document.createElement("div");
+    banner.id = "mindle-diff-banner";
+    banner.className = "mindle-diff-banner";
+    const noun = count === 1 ? "change" : "changes";
+    banner.innerHTML =
+      '<span class="mindle-diff-banner-label">' + count + ' pending ' + noun + '</span>' +
+      '<span class="mindle-diff-banner-actions">' +
+        '<button data-mindle-diff-action="accept-all">✓ Keep All</button>' +
+        '<button data-mindle-diff-action="reject-all">✗ Revert All</button>' +
+      '</span>';
+    doc.insertBefore(banner, doc.firstChild);
+    banner.querySelector('[data-mindle-diff-action="accept-all"]')
+      .addEventListener("click", (ev) => {
+        ev.preventDefault();
+        postToSwift("diffAcceptAll", {});
+      });
+    banner.querySelector('[data-mindle-diff-action="reject-all"]')
+      .addEventListener("click", (ev) => {
+        ev.preventDefault();
+        postToSwift("diffRejectAll", {});
+      });
   }
 
   function attachDiffHandlers() {
