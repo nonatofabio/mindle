@@ -344,7 +344,12 @@ struct AnnotationsSidebar: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 10) {
+                        // Eager VStack (not LazyVStack) because
+                        // scrollTo doesn't work for not-yet-realized
+                        // lazy rows, and annotation counts in a single
+                        // doc are bounded enough that eager rendering
+                        // is fine.
+                        VStack(alignment: .leading, spacing: 10) {
                             ForEach(store.annotations) { ann in
                                 AnnotationCard(annotation: ann)
                                     .id(ann.id)
@@ -354,12 +359,11 @@ struct AnnotationsSidebar: View {
                         .padding(.vertical, 12)
                     }
                     .onChange(of: store.focusedAnnotation) { _, newID in
-                        // ⌘⇧N appends a new annotation to the array; on
-                        // long files the new card lands below the
-                        // fold. LazyVStack only renders rows on
-                        // appear, so scrollTo right now would be a
-                        // no-op for a brand-new id. Defer one runloop
-                        // pass so SwiftUI has materialized the row.
+                        // ⌘⇧N appends a new annotation to the array;
+                        // on long files the new card lands below the
+                        // fold. Defer one runloop pass so the new row
+                        // is laid out before we ask the proxy to
+                        // scroll to it.
                         guard let id = newID else { return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                             withAnimation(.easeInOut(duration: 0.2)) {
