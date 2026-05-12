@@ -50,6 +50,18 @@ struct FocusStableTextEditor: NSViewRepresentable {
         textView.onCommit = { [weak coord = context.coordinator] in
             coord?.parent.onCommit()
         }
+        // When the user clicks anywhere else (another card, the
+        // article, the file browser), AppKit takes first responder
+        // away from this text view. Push that back into the binding
+        // so updateNSView doesn't try to re-grab focus on the next
+        // store change. Without this, isFocused stays stuck at true
+        // and any sibling re-render yanks the cursor back to this
+        // textbox.
+        textView.onResignFocus = { [weak coord = context.coordinator] in
+            DispatchQueue.main.async {
+                coord?.parent.isFocused = false
+            }
+        }
 
         let scrollView = NSScrollView()
         scrollView.documentView = textView
@@ -116,14 +128,15 @@ struct FocusStableTextEditor: NSViewRepresentable {
 /// newline (the multi-line case).
 final class CommittingTextView: NSTextView {
     var onCommit: (() -> Void)?
+    /// Fired when this text view loses first-responder status. The
+    /// SwiftUI binding for isFocused needs to reflect AppKit reality,
+    /// otherwise updateNSView keeps trying to re-grab focus.
+    var onResignFocus: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
         let isReturn = event.keyCode == 36 || event.keyCode == 76
         if isReturn {
             if event.modifierFlags.contains(.shift) {
-                // Force a real newline. AppKit's default for Shift+Return
-                // in some configurations is `insertLineBreak:` which
-                // inserts U+2028 — not what users expect.
                 insertText("\n", replacementRange: selectedRange())
                 return
             }
@@ -131,5 +144,13 @@ final class CommittingTextView: NSTextView {
             return
         }
         super.keyDown(with: event)
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let didResign = super.resignFirstResponder()
+        if didResign {
+            onResignFocus?()
+        }
+        return didResign
     }
 }

@@ -356,11 +356,15 @@ struct AnnotationsSidebar: View {
                     .onChange(of: store.focusedAnnotation) { _, newID in
                         // ⌘⇧N appends a new annotation to the array; on
                         // long files the new card lands below the
-                        // fold. Auto-scroll keeps the user's attention
-                        // anchored to the thing they just created.
+                        // fold. LazyVStack only renders rows on
+                        // appear, so scrollTo right now would be a
+                        // no-op for a brand-new id. Defer one runloop
+                        // pass so SwiftUI has materialized the row.
                         guard let id = newID else { return }
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            proxy.scrollTo(id, anchor: .center)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                proxy.scrollTo(id, anchor: .center)
+                            }
                         }
                     }
                 }
