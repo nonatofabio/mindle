@@ -14,6 +14,11 @@ import Darwin
 @main
 struct MindleMCP {
 
+    /// Stable UUID for the lifetime of this helper process. Threaded into
+    /// every Mindle request so Mindle can tag mutations and filter them
+    /// back out of wait_for_annotation_event responses for the same client.
+    private static let clientID: String = UUID().uuidString
+
     static func main() {
         // Synchronous read loop — async/Task on stdin proved flaky in
         // this CLI context. POSIX read on fd 0 is bulletproof.
@@ -382,6 +387,7 @@ struct MindleMCP {
 
         var request = body
         request["op"] = op
+        request["client_id"] = clientID
         guard let data = try? JSONSerialization.data(withJSONObject: request) else {
             return errorContent("could not encode request")
         }
