@@ -136,9 +136,20 @@ final class AnnotationEventLog {
             return snap
         }
 
+        // Pin the waiter's threshold at call time. With sinceID == nil
+        // we want "events appended AFTER this call returns" — but
+        // signalWaiters re-evaluates `snapshot(sinceID: nil)` on every
+        // append, and snapshot resolves nil to the current lastID
+        // (nextID - 1), which advances with each append. The result:
+        // every new event has id == new lastID and is filtered out by
+        // `ev.id > effectiveSince`, so the waiter never wakes. Resolve
+        // nil to the current lastID exactly once at registration so the
+        // threshold is fixed for the lifetime of this waiter.
+        let pinnedSinceID = sinceID ?? (nextID - 1)
+
         return await withCheckedContinuation { continuation in
             let waiter = Waiter(
-                sinceID: sinceID,
+                sinceID: pinnedSinceID,
                 excludingClientID: excludingClientID,
                 continuation: continuation
             )
