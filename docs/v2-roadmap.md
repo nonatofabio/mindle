@@ -67,14 +67,67 @@ The release that ties the loop together and earns the major version bump.
 
 ---
 
-## Out of scope for v2.0 (kept on roadmap, deferred)
+## v2.1 — Multi-user collaboration foundation
+
+The same diff-on-reload + annotation surface that closes the *agent* loop also closes the *teammate* loop — a colleague editing your file in iCloud/OneDrive/Dropbox is architecturally indistinguishable from an agent editing it. v2.1 makes that legible without shipping any sync code of our own.
+
+> *Your teammate is just another writer to the file. Mindle makes you see them.*
+
+- **Identity.** New `Mindle → Identity` setting: display name + color, stored in `~/Library/Preferences/local.fnp.mindle.plist`. Defaults to system username + a deterministic colour from the name hash. Skippable; private to the local machine until they touch a shared file.
+- **Author-stamped sidecar.** Extend `Annotation` and the diff baseline record with `author` (string) and `authorColor` (hex). Old sidecars round-trip clean — missing field reads as "unknown."
+- **Diff banner attribution.** Today's banner says *"3 pending changes."* Becomes *"3 changes from Alice · synced 30s ago"* / *"3 changes from agent"* / *"3 external changes"*. Heuristic: edits arriving over MCP's `clear_annotation` path → agent; edits via file watcher whose sidecar lists a fresh author entry → that teammate; everything else → unknown external.
+- **Annotation colour per author.** The dot and the left-edge rule in the annotations sidebar use the author's colour. Hover shows the author name. Today's single-user view still looks identical for solo files (everything one colour).
+- **Provider detection + "Shared" badge.** When the active file resolves to a path under a known cloud-drive root (`~/OneDrive*`, `~/Library/CloudStorage/OneDrive-*`, `~/Library/Mobile Documents/com~apple~CloudDocs/`, `~/Dropbox/`, `~/Library/CloudStorage/Dropbox/`, `~/Library/CloudStorage/GoogleDrive-*`), the toolbar shows a *"Shared · OneDrive"* (or matching) badge. Pure path-prefix detection — no provider APIs, no OAuth, no network.
+- **Conflict-copy detection.** When the file watcher sees a sibling matching `<name> (conflict|conflicting copy) .*\.md` show up, surface a *"Conflicting copy from \<author\>"* prompt that opens both versions in tabs side-by-side with diff visible. The user picks the winner and the loser is moved to a `~/.mindle-trash/` quarantine.
+
+**Hard scope boundaries (kept off the table on purpose):**
+- No OneDrive / Google Drive / Dropbox **API** integration. The user's existing desktop sync client is the transport; Mindle never authenticates against the provider. This is what keeps *"No network calls"* on the README honest.
+- No real-time presence, no live cursors, no "Alice is typing." Closest possible is a heartbeat object once v2.2 lands a sync provider that supports one.
+- No identity service. Display name is whatever the user types — same trust model as a markdown filename.
+
+**Who it's for:** anyone whose teammates already share files via iCloud/OneDrive/Dropbox/Google Drive/Syncthing/a shared NAS. Roughly 80% of the audience inherits collaboration the day v2.1 ships.
+
+## v2.2 — Bring-your-own sync (S3 first)
+
+For users whose markdown lives in a server-side bucket and not a desktop-synced cloud drive. v2.1's collaboration UX is reused unchanged — v2.2 just plugs a different transport underneath.
+
+- **`SyncProvider` protocol.** Pull, push (with optimistic-concurrency token), list, observe. Three concrete implementations to start:
+  - **`LocalSyncProvider`** — the default no-op. File is on disk; OS handles any sync. This is what every existing user already runs implicitly.
+  - **`S3SyncProvider`** — the first real backend.
+  - **`WebDAVSyncProvider`** — deferred to v2.3 unless demand pulls it in earlier.
+- **S3 sync model.**
+  - Config: bucket + region + prefix, credentials sourced from standard AWS chain (env vars → `~/.aws/credentials` → IAM role on EC2). No bespoke credential UI; if the user wants a non-default profile, they pick a profile name.
+  - **Pull:** `ListObjectsV2` against the prefix every 30 seconds (configurable). ETag-based diff against a local index. Anything changed is downloaded into `~/Library/Caches/local.fnp.mindle/s3/<bucket-uuid>/`. From there, Mindle's file watcher takes over — the rest of the UX is identical to v2.1.
+  - **Push:** debounced 5s after a local change. Upload with `If-Match: <last-known-ETag>`. On precondition failure, another writer beat us — pull their version, surface as a diff via the same machinery, user resolves.
+  - **Conflict on simultaneous edit:** loser's local copy is written to `<file> (conflict from <author>).md` and surfaced the same way as v2.1's cloud-drive conflict path.
+- **Settings UI.** New *Sync* pane: pick a provider, configure it, see status (last pull time, last push time, error if any). One backend per Mindle install for v2.2 — multi-backend can come later if anyone asks.
+- **Auth surface.** Credentials never leave the Keychain. The Settings pane stores access-key/secret in Keychain, never plaintext. Read-only env-var / profile fallback for users on managed AWS workstations.
+
+**Hard scope boundaries:**
+- **No CRDT, no operational transform.** Last-write-wins per file, with the diff/conflict surface as the safety net. The diff-on-reload UX is doing the heavy lifting — Mindle assumes humans can read a diff better than a CRDT can guess intent on prose.
+- **No object-versioning UI.** If the bucket has S3 versioning on, that's a server-side feature, not Mindle's concern.
+- **No bucket creation flow.** Users come with a bucket; Mindle uses it. We're not in the AWS account-management business.
+
+**Who it's for:** technical users, small teams self-hosting on AWS or AWS-compatible (R2, MinIO, Backblaze B2 via the S3 endpoint). Smaller audience than v2.1 but a clear pull from the "no SaaS" crowd.
+
+---
+
+## v2.3 — Deferred but on the table
+
+- **`WebDAVSyncProvider`** — Nextcloud, ownCloud, Box, Apache modwebdav. Same `SyncProvider` shape as S3.
+- **Optional client-side encryption** for S3 contents (passphrase-derived key in Keychain; files encrypted before upload).
+- **Presence indicators** — *"Bob has this file open."* Smallest possible implementation: a heartbeat file per user (`~/.mindle-presence/<user-uuid>.json`) updated every 15s with the active file path. Cloud-drive sync (or the SyncProvider) propagates it; Mindle aggregates and shows. Still nowhere near live cursors, but enough to know who's looking. **Punted from v2.1 because it's a meaningful new surface and we want to ship v2.1's foundation first.**
+
+---
+
+## Out of scope for v2.x (kept on roadmap, deferred)
 
 - **WYSIWYG editing — decided not to ship.** The diff *is* the editor. Reverse decision only if the AI-output category collapses.
+- **Real-time multi-user collaboration (CRDT / live cursors / OT).** v2.1+v2.2 deliver multi-user via file-based sync and the diff surface; live editing would mean a sync server, breaking the "no network calls" line on the README. Reverse decision only if file-based collaboration hits a wall users care about.
 - iOS/iPadOS port
 - Homebrew cask
 - Presentation mode
 - On-device AI Q&A (Apple Intelligence integration)
-- Real-time multi-user collaboration
 
 ---
 

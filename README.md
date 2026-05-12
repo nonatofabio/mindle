@@ -122,6 +122,8 @@ Annotations use a **text + context** anchoring strategy (inspired by [Hypothes.i
 The big-picture plan lives in [`docs/v2-roadmap.md`](docs/v2-roadmap.md). Headlines:
 
 - **v2.0 — MCP collaboration loop.** Mindle becomes the calm review surface for agent-driven markdown work. The agent writes, you read, you mark up; the agent reads your annotations back via Mindle's read-only MCP server and revises. A bundled skill teaches Claude Code (and friends) the loop.
+- **v2.1 — Multi-user collaboration foundation.** Identity, author-stamped annotations, diff-banner attribution, and cloud-drive folder detection. A colleague editing your file in iCloud/OneDrive/Dropbox becomes architecturally indistinguishable from an agent — Mindle just makes you see them. No new sync code; the cloud drive is the transport.
+- **v2.2 — Bring-your-own sync (S3 first).** A `SyncProvider` protocol with an S3 backend for teams whose markdown lives in a bucket. ETag-based optimistic concurrency, conflicts surfaced through the same diff-on-reload UX.
 - **Homebrew cask** — `brew install --cask mindle` for one-line install.
 - **iOS / iPadOS port** — multiplatform build sharing the same WebKit reader and annotation engine.
 
