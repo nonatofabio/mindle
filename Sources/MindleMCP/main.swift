@@ -422,6 +422,11 @@ struct MindleMCP {
             return errorContent("socket() failed: \(String(cString: strerror(errno)))")
         }
         defer { close(fd) }
+        // SO_NOSIGPIPE: never let a write to a closed socket terminate
+        // this helper process. write() will return -1 with errno=EPIPE
+        // and writeAll surfaces that as a clean error.
+        var noSigPipe: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)

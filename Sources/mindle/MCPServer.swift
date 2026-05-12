@@ -123,6 +123,12 @@ final class MCPServer {
                 // listen socket closed — exit the loop.
                 return
             }
+            // SO_NOSIGPIPE: when the helper disconnects mid-wait, the
+            // next write() to this fd would otherwise raise SIGPIPE and
+            // kill Mindle. With SO_NOSIGPIPE the write() returns -1 with
+            // errno=EPIPE instead, and writeAll handles it cleanly.
+            var noSigPipe: Int32 = 1
+            setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
             Task.detached(priority: .utility) {
                 await Self.handleClient(fd: clientFD)
             }
