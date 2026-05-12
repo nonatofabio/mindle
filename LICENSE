@@ -1,3 +1,21 @@
+Mindle License
+
+This LICENSE governs version 2.0 and later of Mindle. Earlier versions
+(v1.x) were released under the MIT License and remain available under
+those terms — see the historical LICENSE in the corresponding v1.x
+release tags on GitHub.
+
+Versions 2.0 and later are licensed under the MIT License with the
+addition of the Commons Clause license condition, reproduced in full
+below. In short: the source is open, you may copy, modify, distribute,
+sublicense, and use the Software freely — but you may not "Sell" the
+Software, as defined by the Commons Clause, without a separate
+commercial agreement with the Licensor.
+
+For commercial licensing inquiries, please contact the Licensor.
+
+────────────────────────────────────────────────────────────────────
+
 MIT License
 
 Copyright (c) 2026 Fabio Nonato
@@ -19,3 +37,27 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+────────────────────────────────────────────────────────────────────
+
+"Commons Clause" License Condition v1.0
+
+The Software is provided to you by the Licensor under the License, as
+defined below, subject to the following condition.
+
+Without limiting other conditions in the License, the grant of rights
+under the License will not include, and the License does not grant to
+you, the right to Sell the Software.
+
+For purposes of the foregoing, "Sell" means practicing any or all of
+the rights granted to you under the License to provide to third parties,
+for a fee or other consideration (including without limitation fees for
+hosting or consulting/support services related to the Software), a
+product or service whose value derives, entirely or substantially, from
+the functionality of the Software. Any license notice or attribution
+required by the License must also include this Commons Clause License
+Condition notice.
+
+Software: Mindle (versions 2.0 and later)
+License: MIT
+Licensor: Fabio Nonato

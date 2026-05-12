@@ -20,7 +20,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue?style=flat-square" alt="macOS 14+">
   <img src="https://img.shields.io/badge/swift-6.x-orange?style=flat-square" alt="Swift 6">
-  <img src="https://img.shields.io/github/license/nonatofabio/mindle?style=flat-square" alt="MIT License">
+  <img src="https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square" alt="MIT + Commons Clause (v2.0+)">
   <img src="https://img.shields.io/github/actions/workflow/status/nonatofabio/mindle/build.yml?style=flat-square&label=build" alt="Build status">
   <img src="https://img.shields.io/github/downloads/nonatofabio/mindle/total?style=flat-square&label=downloads" alt="Total downloads">
 </p>
@@ -127,4 +127,6 @@ The big-picture plan lives in [`docs/v2-roadmap.md`](docs/v2-roadmap.md). Headli
 
 ## License
 
-[MIT](LICENSE) — use it, fork it, make it yours.
+Mindle **v2.0 and later** is licensed under [**MIT + Commons Clause**](LICENSE). Use it, fork it, modify it, embed it in your own work — same MIT freedoms you'd expect — with one added condition: you may not *Sell* the Software (or sell hosting / support / services whose value derives substantially from it) without a separate commercial agreement. For commercial licensing inquiries, please get in touch.
+
+Versions **v1.x** were released under the pure [MIT License](https://opensource.org/license/mit/) and remain available under those terms in the corresponding v1.x release tags.
