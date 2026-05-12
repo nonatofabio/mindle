@@ -350,18 +350,37 @@ final class DocumentStore: ObservableObject {
 
     func highlightSelection() {
         guard hasSelection else { NSSound.beep(); return }
-        // Toggle off if an annotation already exists with identical text+context
         if let i = annotations.firstIndex(where: {
             $0.text == selectionText && $0.prefix == selectionPrefix && $0.suffix == selectionSuffix
         }) {
+            let removed = annotations[i]
             annotations.remove(at: i)
+            if let url = fileURL {
+                AnnotationEventLog.shared.append(
+                    kind: .deleted,
+                    path: url.path,
+                    annotationID: removed.id,
+                    annotation: nil,
+                    clientID: nil
+                )
+            }
         } else {
-            annotations.append(Annotation(
+            let ann = Annotation(
                 text: selectionText,
                 prefix: selectionPrefix,
                 suffix: selectionSuffix,
                 note: ""
-            ))
+            )
+            annotations.append(ann)
+            if let url = fileURL {
+                AnnotationEventLog.shared.append(
+                    kind: .created,
+                    path: url.path,
+                    annotationID: ann.id,
+                    annotation: ann,
+                    clientID: nil
+                )
+            }
         }
         saveSidecar()
     }
@@ -384,6 +403,15 @@ final class DocumentStore: ObservableObject {
             annotations.append(ann)
             editingAnnotationID = ann.id
             focusedAnnotation = ann.id
+            if let url = fileURL {
+                AnnotationEventLog.shared.append(
+                    kind: .created,
+                    path: url.path,
+                    annotationID: ann.id,
+                    annotation: ann,
+                    clientID: nil
+                )
+            }
             saveSidecar()
         }
     }
@@ -395,7 +423,22 @@ final class DocumentStore: ObservableObject {
     }
 
     func delete(id: UUID) {
+        guard let url = fileURL else {
+            annotations.removeAll { $0.id == id }
+            saveSidecar()
+            return
+        }
+        let removed = annotations.first(where: { $0.id == id })
         annotations.removeAll { $0.id == id }
+        if removed != nil {
+            AnnotationEventLog.shared.append(
+                kind: .deleted,
+                path: url.path,
+                annotationID: id,
+                annotation: nil,
+                clientID: nil
+            )
+        }
         saveSidecar()
     }
 
@@ -423,7 +466,8 @@ final class DocumentStore: ObservableObject {
         forPath path: String,
         annotationID: UUID,
         author: String,
-        text: String
+        text: String,
+        clientID: String? = nil
     ) -> Bool {
         let message = AnnotationMessage(author: author, text: text)
         if let active = activeTabID,
@@ -436,6 +480,14 @@ final class DocumentStore: ObservableObject {
             thread.append(message)
             annotations[j].thread = thread
             saveSidecar()
+            AnnotationEventLog.shared.append(
+                kind: .threadReply,
+                path: path,
+                annotationID: annotationID,
+                annotation: annotations[j],
+                messageID: message.id,
+                clientID: clientID
+            )
             return true
         }
         if let i = tabs.firstIndex(where: { $0.fileURL.path == path }) {
@@ -446,6 +498,14 @@ final class DocumentStore: ObservableObject {
             thread.append(message)
             tabs[i].annotations[j].thread = thread
             saveSidecar(forTab: tabs[i])
+            AnnotationEventLog.shared.append(
+                kind: .threadReply,
+                path: path,
+                annotationID: annotationID,
+                annotation: tabs[i].annotations[j],
+                messageID: message.id,
+                clientID: clientID
+            )
             return true
         }
         return false
@@ -460,7 +520,8 @@ final class DocumentStore: ObservableObject {
         text: String,
         prefix: String,
         suffix: String,
-        note: String
+        note: String,
+        clientID: String? = nil
     ) -> UUID? {
         let ann = Annotation(
             text: text,
@@ -476,11 +537,25 @@ final class DocumentStore: ObservableObject {
             annotations.append(ann)
             showAnnotations = true
             saveSidecar()
+            AnnotationEventLog.shared.append(
+                kind: .created,
+                path: path,
+                annotationID: ann.id,
+                annotation: ann,
+                clientID: clientID
+            )
             return ann.id
         }
         if let i = tabs.firstIndex(where: { $0.fileURL.path == path }) {
             tabs[i].annotations.append(ann)
             saveSidecar(forTab: tabs[i])
+            AnnotationEventLog.shared.append(
+                kind: .created,
+                path: path,
+                annotationID: ann.id,
+                annotation: ann,
+                clientID: clientID
+            )
             return ann.id
         }
         return nil
@@ -492,7 +567,7 @@ final class DocumentStore: ObservableObject {
     /// summary is stashed in NSLog for now — Phase 3 surfaces it in the
     /// UI as a chip next to the corresponding diff chunk.
     @discardableResult
-    func removeAnnotation(forPath path: String, id: UUID, summary: String) -> Bool {
+    func removeAnnotation(forPath path: String, id: UUID, summary: String, clientID: String? = nil) -> Bool {
         NSLog("[mindle.mcp] clear_annotation path=%@ id=%@ summary=%@", path, id.uuidString, summary)
         if let active = activeTabID,
            let i = tabs.firstIndex(where: { $0.id == active }),
@@ -502,12 +577,26 @@ final class DocumentStore: ObservableObject {
             // saveSidecar() pulls from in-memory annotations of the
             // active tab, so this persists correctly.
             saveSidecar()
+            AnnotationEventLog.shared.append(
+                kind: .deleted,
+                path: path,
+                annotationID: id,
+                annotation: nil,
+                clientID: clientID
+            )
             return true
         }
         if let i = tabs.firstIndex(where: { $0.fileURL.path == path }) {
             guard tabs[i].annotations.contains(where: { $0.id == id }) else { return false }
             tabs[i].annotations.removeAll { $0.id == id }
             saveSidecar(forTab: tabs[i])
+            AnnotationEventLog.shared.append(
+                kind: .deleted,
+                path: path,
+                annotationID: id,
+                annotation: nil,
+                clientID: clientID
+            )
             return true
         }
         return false
