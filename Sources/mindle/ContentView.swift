@@ -363,6 +363,10 @@ struct AnnotationCard: View {
     @State private var noteDraft: String = ""
     @State private var isEditing: Bool = false
     @FocusState private var noteFocused: Bool
+    /// NSEvent monitor installed for the lifetime of `noteFocused == true`.
+    /// Catches bare Return to commit; Shift+Return falls through and
+    /// inserts a newline like any other multi-line text editor.
+    @State private var returnKeyMonitor: Any? = nil
 
     var body: some View {
         let c = store.theme.colors
@@ -432,11 +436,7 @@ struct AnnotationCard: View {
                 if isEditing {
                     HStack {
                         Spacer()
-                        Button("Done") {
-                            isEditing = false
-                            noteFocused = false
-                            store.editingAnnotationID = nil
-                        }
+                        Button("Done") { commitNote() }
                         .buttonStyle(.borderless)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(c.accent)
@@ -445,7 +445,14 @@ struct AnnotationCard: View {
             } else {
                 Button {
                     isEditing = true
-                    noteFocused = true
+                    // The TextEditor doesn't exist in the view tree until
+                    // isEditing flips to true; setting @FocusState in the
+                    // same tick is a no-op. Defer to the next runloop
+                    // pass so SwiftUI has built the field before we
+                    // request focus.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        noteFocused = true
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
@@ -471,7 +478,13 @@ struct AnnotationCard: View {
             noteDraft = annotation.note
             if store.editingAnnotationID == annotation.id {
                 isEditing = true
-                noteFocused = true
+                // Defer focus the same way the onChange path does — on
+                // brand-new cards (annotation just appended via ⌘⇧N),
+                // the TextEditor isn't in the view tree yet at onAppear
+                // time so a same-tick noteFocused = true is dropped.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                    noteFocused = true
+                }
             }
         }
         .onChange(of: annotation.note) { _, newValue in
@@ -484,6 +497,40 @@ struct AnnotationCard: View {
                     noteFocused = true
                 }
             }
+        }
+        .onChange(of: noteFocused) { _, focused in
+            if focused { installReturnMonitor() } else { removeReturnMonitor() }
+        }
+        .onDisappear { removeReturnMonitor() }
+    }
+
+    private func commitNote() {
+        isEditing = false
+        noteFocused = false
+        store.editingAnnotationID = nil
+    }
+
+    /// Local keyDown monitor. SwiftUI's TextEditor wraps an NSTextView
+    /// that insists on inserting a newline for Return; the monitor sees
+    /// the event first and can swallow it when no Shift is held,
+    /// routing instead to commit. Shift+Return falls through to the
+    /// TextEditor's default newline insertion.
+    private func installReturnMonitor() {
+        guard returnKeyMonitor == nil else { return }
+        returnKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let isReturn = event.keyCode == 36 || event.keyCode == 76
+            guard isReturn, !event.modifierFlags.contains(.shift) else {
+                return event
+            }
+            commitNote()
+            return nil
+        }
+    }
+
+    private func removeReturnMonitor() {
+        if let m = returnKeyMonitor {
+            NSEvent.removeMonitor(m)
+            returnKeyMonitor = nil
         }
     }
 }
