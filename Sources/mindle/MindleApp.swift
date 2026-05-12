@@ -88,6 +88,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    /// Append a message to an existing annotation's thread, in
+    /// whichever window has the file open.
+    func appendThreadMessage(
+        forPath path: String,
+        annotationID: UUID,
+        author: String,
+        text: String
+    ) -> Bool {
+        registeredStores.removeAll { $0.store == nil }
+        for ref in registeredStores {
+            if ref.store?.appendThreadMessage(
+                forPath: path,
+                annotationID: annotationID,
+                author: author,
+                text: text
+            ) == true {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Create a new agent-authored annotation in whichever window has
+    /// the file open. Returns the new annotation's id, or nil if the
+    /// file isn't open in any window.
+    func createAgentAnnotation(
+        forPath path: String,
+        text: String,
+        prefix: String,
+        suffix: String,
+        note: String
+    ) -> UUID? {
+        registeredStores.removeAll { $0.store == nil }
+        for ref in registeredStores {
+            if let id = ref.store?.createAgentAnnotation(
+                forPath: path,
+                text: text,
+                prefix: prefix,
+                suffix: suffix,
+                note: note
+            ) {
+                return id
+            }
+        }
+        return nil
+    }
+
     func application(_ sender: NSApplication, open urls: [URL]) {
         if let store = activeStore {
             for url in urls {

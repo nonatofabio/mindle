@@ -7,6 +7,20 @@ enum ReaderTheme: String, CaseIterable, Codable {
     case light, sepia, dark
 }
 
+/// A message in an annotation's thread. Threads are how the user and
+/// the agent have a back-and-forth about a passage — the agent can
+/// post progress notes or questions, the user can reply, all anchored
+/// to the same passage.
+struct AnnotationMessage: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    /// "user" or "agent". Future authors (e.g., "system") can be added
+    /// without breaking the codec; readers should treat unknown values
+    /// as user.
+    var author: String
+    var text: String
+    var createdAt: Date = Date()
+}
+
 struct Annotation: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var text: String        // the selected passage verbatim
@@ -14,6 +28,14 @@ struct Annotation: Identifiable, Codable, Equatable {
     var suffix: String      // ~32 chars after
     var note: String
     var createdAt: Date = Date()
+    /// nil means user-created — the default for every annotation made
+    /// before threads existed. Agent-created annotations get "agent"
+    /// so the UI can mark them distinctly.
+    var author: String?
+    /// Optional follow-up messages. Stored nil (not []) when there are
+    /// no replies so existing sidecars round-trip without growth and
+    /// the JSON stays minimal for the common case.
+    var thread: [AnnotationMessage]?
 }
 
 struct FileNode: Identifiable, Equatable {
@@ -389,6 +411,77 @@ final class DocumentStore: ObservableObject {
         }
         if let tab = tabs.first(where: { $0.fileURL.path == path }) {
             return tab.annotations
+        }
+        return nil
+    }
+
+    /// MCP-side: append a message to an existing annotation's thread.
+    /// Returns true if a matching annotation was found in any tab and
+    /// the message was appended.
+    @discardableResult
+    func appendThreadMessage(
+        forPath path: String,
+        annotationID: UUID,
+        author: String,
+        text: String
+    ) -> Bool {
+        let message = AnnotationMessage(author: author, text: text)
+        if let active = activeTabID,
+           let i = tabs.firstIndex(where: { $0.id == active }),
+           tabs[i].fileURL.path == path {
+            guard let j = annotations.firstIndex(where: { $0.id == annotationID }) else {
+                return false
+            }
+            var thread = annotations[j].thread ?? []
+            thread.append(message)
+            annotations[j].thread = thread
+            saveSidecar()
+            return true
+        }
+        if let i = tabs.firstIndex(where: { $0.fileURL.path == path }) {
+            guard let j = tabs[i].annotations.firstIndex(where: { $0.id == annotationID }) else {
+                return false
+            }
+            var thread = tabs[i].annotations[j].thread ?? []
+            thread.append(message)
+            tabs[i].annotations[j].thread = thread
+            saveSidecar(forTab: tabs[i])
+            return true
+        }
+        return false
+    }
+
+    /// MCP-side: create a new annotation authored by the agent. The
+    /// agent supplies the anchor (text+prefix+suffix) and the note,
+    /// just like a user creating one via ⌘⇧N. Returns the new
+    /// annotation's id, or nil if the file isn't open in this store.
+    func createAgentAnnotation(
+        forPath path: String,
+        text: String,
+        prefix: String,
+        suffix: String,
+        note: String
+    ) -> UUID? {
+        let ann = Annotation(
+            text: text,
+            prefix: prefix,
+            suffix: suffix,
+            note: note,
+            author: "agent",
+            thread: nil
+        )
+        if let active = activeTabID,
+           let i = tabs.firstIndex(where: { $0.id == active }),
+           tabs[i].fileURL.path == path {
+            annotations.append(ann)
+            showAnnotations = true
+            saveSidecar()
+            return ann.id
+        }
+        if let i = tabs.firstIndex(where: { $0.fileURL.path == path }) {
+            tabs[i].annotations.append(ann)
+            saveSidecar(forTab: tabs[i])
+            return ann.id
         }
         return nil
     }

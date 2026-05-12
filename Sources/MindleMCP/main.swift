@@ -149,6 +149,60 @@ struct MindleMCP {
                     "required": ["path", "id", "summary"],
                     "additionalProperties": false
                 ]
+            ],
+            [
+                "name": "comment_on_annotation",
+                "description": "Add a message to an annotation's thread without dismissing the annotation. Use this to reply to the user's note, ask a clarifying question before editing, or report progress on a multi-step change. The user sees your message inline under their annotation, with the same back-and-forth feel as a code review comment thread.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "path": [
+                            "type": "string",
+                            "description": "Absolute path to the file the annotation lives on."
+                        ],
+                        "id": [
+                            "type": "string",
+                            "description": "The annotation's UUID, as returned by get_annotations."
+                        ],
+                        "text": [
+                            "type": "string",
+                            "description": "Your message. Plain text. Keep it focused — one or two sentences usually."
+                        ]
+                    ],
+                    "required": ["path", "id", "text"],
+                    "additionalProperties": false
+                ]
+            ],
+            [
+                "name": "create_annotation",
+                "description": "Open a new annotation on a span of text in a file currently open in Mindle. Use this to ask the user a question about something you've written or about a passage you want their input on. The annotation appears in the user's sidebar marked as agent-authored with your note as the prompt; the user can reply in its thread.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "path": [
+                            "type": "string",
+                            "description": "Absolute path to the file. Must be currently open in Mindle."
+                        ],
+                        "text": [
+                            "type": "string",
+                            "description": "The exact substring of the file the annotation anchors to. Must appear verbatim in the current file content."
+                        ],
+                        "prefix": [
+                            "type": "string",
+                            "description": "Up to ~32 characters from the file immediately preceding 'text' — used to disambiguate when 'text' appears multiple times. Pass an empty string if the file is small and disambiguation isn't needed."
+                        ],
+                        "suffix": [
+                            "type": "string",
+                            "description": "Up to ~32 characters from the file immediately following 'text'."
+                        ],
+                        "note": [
+                            "type": "string",
+                            "description": "The question or comment you want the user to see. Will appear as the annotation's primary note above the thread."
+                        ]
+                    ],
+                    "required": ["path", "text", "prefix", "suffix", "note"],
+                    "additionalProperties": false
+                ]
             ]
         ]
     }
@@ -208,6 +262,35 @@ struct MindleMCP {
                 body: ["path": path, "id": id, "summary": summary]
             ) { _ in
                 return textContent("Cleared annotation \(id) on \(path).")
+            }
+
+        case "comment_on_annotation":
+            guard let path = arguments["path"] as? String,
+                  let id = arguments["id"] as? String,
+                  let text = arguments["text"] as? String else {
+                return errorContent("missing required arguments: path, id, text")
+            }
+            return callMindle(
+                op: "comment_on_annotation",
+                body: ["path": path, "id": id, "text": text]
+            ) { _ in
+                return textContent("Posted reply to annotation \(id) on \(path).")
+            }
+
+        case "create_annotation":
+            guard let path = arguments["path"] as? String,
+                  let text = arguments["text"] as? String,
+                  let note = arguments["note"] as? String else {
+                return errorContent("missing required arguments: path, text, note")
+            }
+            let prefix = (arguments["prefix"] as? String) ?? ""
+            let suffix = (arguments["suffix"] as? String) ?? ""
+            return callMindle(
+                op: "create_annotation",
+                body: ["path": path, "text": text, "prefix": prefix, "suffix": suffix, "note": note]
+            ) { resp in
+                let newID = (resp["id"] as? String) ?? "?"
+                return textContent("Opened annotation \(newID) on \(path).")
             }
 
         default:

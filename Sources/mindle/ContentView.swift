@@ -363,22 +363,38 @@ struct AnnotationCard: View {
     @State private var noteDraft: String = ""
     @State private var isEditing: Bool = false
     @FocusState private var noteFocused: Bool
-    /// NSEvent monitor installed for the lifetime of `noteFocused == true`.
-    /// Catches bare Return to commit; Shift+Return falls through and
-    /// inserts a newline like any other multi-line text editor.
+
+    @State private var replyDraft: String = ""
+    @State private var isReplying: Bool = false
+    @FocusState private var replyFocused: Bool
+
+    /// Single NSEvent monitor shared between the note editor and the
+    /// reply editor — only one of the two TextEditors can be focused
+    /// at a time, so the closure dispatches to whichever commit action
+    /// matches the current focus. Catches bare Return to commit;
+    /// Shift+Return falls through and inserts a newline.
     @State private var returnKeyMonitor: Any? = nil
+
+    private var isAgentAuthored: Bool { annotation.author == "agent" }
+    private var hasThread: Bool { (annotation.thread?.isEmpty == false) }
+    private var canReply: Bool { !annotation.note.isEmpty || hasThread }
 
     var body: some View {
         let c = store.theme.colors
         let isFocused = store.focusedAnnotation == annotation.id
-        let dotColor: Color = annotation.note.isEmpty ? c.highlight : c.highlightNote
+        let dotColor: Color = isAgentAuthored
+            ? c.muted
+            : (annotation.note.isEmpty ? c.highlight : c.highlightNote)
+        let typeLabel: String = isAgentAuthored
+            ? "Agent"
+            : (annotation.note.isEmpty ? "Highlight" : "Note")
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Circle()
                     .fill(dotColor)
                     .frame(width: 8, height: 8)
-                Text(annotation.note.isEmpty ? "Highlight" : "Note")
+                Text(typeLabel)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(c.muted)
                     .textCase(.uppercase)
@@ -463,6 +479,57 @@ struct AnnotationCard: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            if let thread = annotation.thread, !thread.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(thread) { message in
+                        AnnotationMessageRow(message: message)
+                    }
+                }
+                .padding(.top, 2)
+            }
+
+            if isReplying {
+                TextEditor(text: $replyDraft)
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(c.text)
+                    .scrollContentBackground(.hidden)
+                    .background(c.background.opacity(0.5))
+                    .frame(minHeight: 48, maxHeight: 120)
+                    .padding(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(c.accent.opacity(0.45), lineWidth: 0.5)
+                    )
+                    .focused($replyFocused)
+                HStack {
+                    Spacer()
+                    Button("Cancel") { cancelReply() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11))
+                        .foregroundStyle(c.muted)
+                    Button("Send") { commitReply() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(c.accent)
+                        .disabled(replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            } else if canReply {
+                Button {
+                    isReplying = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        replyFocused = true
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrowshape.turn.up.left")
+                        Text("Reply")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(c.accent)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(12)
         .background(
@@ -498,9 +565,8 @@ struct AnnotationCard: View {
                 }
             }
         }
-        .onChange(of: noteFocused) { _, focused in
-            if focused { installReturnMonitor() } else { removeReturnMonitor() }
-        }
+        .onChange(of: noteFocused) { _, _ in syncReturnMonitor() }
+        .onChange(of: replyFocused) { _, _ in syncReturnMonitor() }
         .onDisappear { removeReturnMonitor() }
     }
 
@@ -510,11 +576,40 @@ struct AnnotationCard: View {
         store.editingAnnotationID = nil
     }
 
+    private func commitReply() {
+        let trimmed = replyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = store.fileURL else { cancelReply(); return }
+        store.appendThreadMessage(
+            forPath: url.path,
+            annotationID: annotation.id,
+            author: "user",
+            text: replyDraft
+        )
+        replyDraft = ""
+        cancelReply()
+    }
+
+    private func cancelReply() {
+        isReplying = false
+        replyFocused = false
+        replyDraft = ""
+    }
+
     /// Local keyDown monitor. SwiftUI's TextEditor wraps an NSTextView
     /// that insists on inserting a newline for Return; the monitor sees
     /// the event first and can swallow it when no Shift is held,
     /// routing instead to commit. Shift+Return falls through to the
-    /// TextEditor's default newline insertion.
+    /// TextEditor's default newline insertion. One monitor serves both
+    /// fields; the closure dispatches based on which @FocusState is
+    /// currently true at the time of the press.
+    private func syncReturnMonitor() {
+        if noteFocused || replyFocused {
+            installReturnMonitor()
+        } else {
+            removeReturnMonitor()
+        }
+    }
+
     private func installReturnMonitor() {
         guard returnKeyMonitor == nil else { return }
         returnKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -522,8 +617,9 @@ struct AnnotationCard: View {
             guard isReturn, !event.modifierFlags.contains(.shift) else {
                 return event
             }
-            commitNote()
-            return nil
+            if replyFocused { commitReply(); return nil }
+            if noteFocused { commitNote(); return nil }
+            return event
         }
     }
 
@@ -533,6 +629,42 @@ struct AnnotationCard: View {
             returnKeyMonitor = nil
         }
     }
+}
+
+/// One message row inside an annotation's thread. Single-column stack,
+/// each row anchored by a thin colored left stripe — gray for agent,
+/// accent for user. Picked for density: a working thread can have many
+/// short exchanges and bubbles would push relevant content off-screen.
+struct AnnotationMessageRow: View {
+    let message: AnnotationMessage
+    @EnvironmentObject var store: DocumentStore
+
+    var body: some View {
+        let c = store.theme.colors
+        let isAgent = message.author == "agent"
+        let stripeColor = isAgent ? c.muted : c.accent
+        HStack(alignment: .top, spacing: 8) {
+            Rectangle()
+                .fill(stripeColor.opacity(isAgent ? 0.55 : 0.9))
+                .frame(width: isAgent ? 1.5 : 2.5)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(message.text)
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(c.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(Self.timeFormatter.string(from: message.createdAt))
+                    .font(.system(size: 10))
+                    .foregroundStyle(c.muted)
+            }
+        }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f
+    }()
 }
 
 // MARK: - File browser sidebar
