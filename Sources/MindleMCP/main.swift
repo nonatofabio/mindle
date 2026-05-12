@@ -241,10 +241,31 @@ struct MindleMCP {
                     let id = (ann["id"] as? String) ?? "?"
                     let text = (ann["text"] as? String) ?? ""
                     let note = (ann["note"] as? String) ?? ""
-                    lines.append("\(i + 1). [id: \(id)]")
+                    let author = (ann["author"] as? String) ?? "user"
+                    let authorTag = author == "agent" ? " (agent-authored)" : ""
+                    lines.append("\(i + 1). [id: \(id)]\(authorTag)")
                     lines.append("   Selected: \(text.replacingOccurrences(of: "\n", with: " "))")
                     if !note.isEmpty {
                         lines.append("   Note: \(note)")
+                    }
+                    if let thread = ann["thread"] as? [[String: Any]], !thread.isEmpty {
+                        lines.append("   Thread:")
+                        for msg in thread {
+                            let mAuthor = (msg["author"] as? String) ?? "?"
+                            let mText = (msg["text"] as? String) ?? ""
+                            // Indent multi-line messages under the bullet so
+                            // the agent can scan a long thread without losing
+                            // the author column.
+                            let firstLine: String
+                            let restLines: [String]
+                            let parts = mText.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+                            firstLine = parts.first ?? ""
+                            restLines = Array(parts.dropFirst())
+                            lines.append("     - \(mAuthor): \(firstLine)")
+                            for r in restLines {
+                                lines.append("       \(r)")
+                            }
+                        }
                     }
                     lines.append("")
                 }
