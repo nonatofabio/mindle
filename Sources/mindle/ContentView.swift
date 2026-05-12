@@ -583,7 +583,7 @@ struct AnnotationCard: View {
             forPath: url.path,
             annotationID: annotation.id,
             author: "user",
-            text: replyDraft
+            text: trimmed
         )
         replyDraft = ""
         cancelReply()

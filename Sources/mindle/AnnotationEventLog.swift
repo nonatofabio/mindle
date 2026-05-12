@@ -103,7 +103,12 @@ final class AnnotationEventLog {
         let effectiveSince = sinceID ?? lastID
 
         let gap: Bool = {
-            if let since = sinceID, since < oldestID - 1 { return true }
+            guard let since = sinceID else { return false }
+            // Agent fell off the back of the ring buffer — events were dropped.
+            if since < oldestID - 1 { return true }
+            // Agent is holding an id newer than anything we know about — this
+            // happens after a Mindle restart resets nextID. Force rebaseline.
+            if since > lastID { return true }
             return false
         }()
 
