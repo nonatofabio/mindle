@@ -98,7 +98,24 @@ final class DocumentStore: ObservableObject {
     private var selectionSuffix: String = ""
 
     @Published var focusedAnnotation: UUID? = nil
-    @Published var editingAnnotationID: UUID? = nil
+    /// When the user creates an annotation via ⌘⇧N, the annotation appears
+    /// with an empty note and the editor opens. Each transition of
+    /// editingAnnotationID *away* from a value commits any pending
+    /// annotation: the `created` event fires here, not at append time,
+    /// so the watch loop sees the finished note instead of an empty
+    /// shell. (Highlights via ⌘⇧H are complete on creation and emit
+    /// immediately — they don't go through this path.)
+    @Published var editingAnnotationID: UUID? = nil {
+        didSet {
+            if let prev = oldValue, prev != editingAnnotationID {
+                commitPendingAnnotation(id: prev)
+            }
+        }
+    }
+    /// Set of annotation ids that were created via the note-editor path
+    /// and haven't surfaced as `created` events yet. They commit when
+    /// editing moves off them.
+    private var pendingCommitAnnotations: Set<UUID> = []
 
     // Bumped to trigger a PDF export in the WKWebView coordinator.
     @Published var pdfExportRequestedAt: Date? = nil
@@ -401,19 +418,33 @@ final class DocumentStore: ObservableObject {
                 note: ""
             )
             annotations.append(ann)
+            // Defer the `created` event until the user finishes typing
+            // the note — see editingAnnotationID's didSet. Emitting now
+            // would race with the typing: the watch loop would wake on
+            // an empty note before the user got past their first word.
+            pendingCommitAnnotations.insert(ann.id)
             editingAnnotationID = ann.id
             focusedAnnotation = ann.id
-            if let url = fileURL {
-                AnnotationEventLog.shared.append(
-                    kind: .created,
-                    path: url.path,
-                    annotationID: ann.id,
-                    annotation: ann,
-                    clientID: nil
-                )
-            }
             saveSidecar()
         }
+    }
+
+    /// Fire the deferred `created` event for an annotation that was
+    /// opened via the note-editor path, now that the user has finished
+    /// editing it. Called automatically when editingAnnotationID moves
+    /// off this annotation (Done click, Return commit, focusing a
+    /// different annotation, window/tab change).
+    private func commitPendingAnnotation(id: UUID) {
+        guard pendingCommitAnnotations.remove(id) != nil else { return }
+        guard let url = fileURL,
+              let ann = annotations.first(where: { $0.id == id }) else { return }
+        AnnotationEventLog.shared.append(
+            kind: .created,
+            path: url.path,
+            annotationID: ann.id,
+            annotation: ann,
+            clientID: nil
+        )
     }
 
     func updateNote(id: UUID, note: String) {
@@ -423,6 +454,11 @@ final class DocumentStore: ObservableObject {
     }
 
     func delete(id: UUID) {
+        // If the annotation never surfaced a `created` event (still in
+        // the note-editor pending state), drop it from the pending set
+        // so commitPendingAnnotation can't fire on a later
+        // editingAnnotationID transition.
+        pendingCommitAnnotations.remove(id)
         guard let url = fileURL else {
             annotations.removeAll { $0.id == id }
             saveSidecar()
