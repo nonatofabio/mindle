@@ -146,6 +146,7 @@ final class MCPServer {
     // MARK: - Op dispatch (hops to MainActor for app state)
 
     private static func dispatch(op: String, request: [String: Any]) async -> [String: Any] {
+        let clientID = request["client_id"] as? String
         switch op {
         case "list_open_files":
             let files = await MainActor.run { AppDelegate.shared?.allOpenFilePaths() ?? [] }
@@ -202,7 +203,11 @@ final class MCPServer {
             let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
             let appended = await MainActor.run {
                 AppDelegate.shared?.appendThreadMessage(
-                    forPath: normalized, annotationID: id, author: "agent", text: text
+                    forPath: normalized,
+                    annotationID: id,
+                    author: "agent",
+                    text: text,
+                    clientID: clientID
                 ) ?? false
             }
             if appended {
@@ -229,7 +234,8 @@ final class MCPServer {
                     text: text,
                     prefix: prefix,
                     suffix: suffix,
-                    note: note
+                    note: note,
+                    clientID: clientID
                 )
             }
             if let id = newID {
@@ -248,7 +254,7 @@ final class MCPServer {
             let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
             let removed = await MainActor.run {
                 AppDelegate.shared?.clearAnnotation(
-                    forPath: normalized, id: id, summary: summary
+                    forPath: normalized, id: id, summary: summary, clientID: clientID
                 ) ?? false
             }
             if removed {

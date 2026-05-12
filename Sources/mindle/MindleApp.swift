@@ -77,11 +77,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the file open. Returns true on success. The summary captures the
     /// agent's description of what it did to address the annotation —
     /// stashed for now, surfaced in the UI in Phase 3.
-    func clearAnnotation(forPath path: String, id: UUID, summary: String) -> Bool {
+    func clearAnnotation(forPath path: String, id: UUID, summary: String, clientID: String?) -> Bool {
         registeredStores.removeAll { $0.store == nil }
         for ref in registeredStores {
             guard let store = ref.store else { continue }
-            if store.removeAnnotation(forPath: path, id: id, summary: summary) {
+            if store.removeAnnotation(forPath: path, id: id, summary: summary, clientID: clientID) {
                 return true
             }
         }
@@ -94,7 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         forPath path: String,
         annotationID: UUID,
         author: String,
-        text: String
+        text: String,
+        clientID: String?
     ) -> Bool {
         registeredStores.removeAll { $0.store == nil }
         for ref in registeredStores {
@@ -102,7 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 forPath: path,
                 annotationID: annotationID,
                 author: author,
-                text: text
+                text: text,
+                clientID: clientID
             ) == true {
                 return true
             }
@@ -118,7 +120,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         text: String,
         prefix: String,
         suffix: String,
-        note: String
+        note: String,
+        clientID: String?
     ) -> UUID? {
         registeredStores.removeAll { $0.store == nil }
         for ref in registeredStores {
@@ -127,7 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 text: text,
                 prefix: prefix,
                 suffix: suffix,
-                note: note
+                note: note,
+                clientID: clientID
             ) {
                 return id
             }
