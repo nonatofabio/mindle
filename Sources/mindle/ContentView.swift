@@ -342,14 +342,27 @@ struct AnnotationsSidebar: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(store.annotations) { ann in
-                            AnnotationCard(annotation: ann)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            ForEach(store.annotations) { ann in
+                                AnnotationCard(annotation: ann)
+                                    .id(ann.id)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                    }
+                    .onChange(of: store.focusedAnnotation) { _, newID in
+                        // ⌘⇧N appends a new annotation to the array; on
+                        // long files the new card lands below the
+                        // fold. Auto-scroll keeps the user's attention
+                        // anchored to the thing they just created.
+                        guard let id = newID else { return }
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            proxy.scrollTo(id, anchor: .center)
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
                 }
             }
         }
@@ -568,25 +581,26 @@ struct AnnotationReplyBox: View {
     @EnvironmentObject var store: DocumentStore
     @State private var draft: String = ""
     @State private var isComposing: Bool = false
-    @FocusState private var focused: Bool
-    @State private var returnKeyMonitor: Any? = nil
+    @State private var focused: Bool = false
 
     var body: some View {
         let c = store.theme.colors
         VStack(alignment: .leading, spacing: 6) {
             if isComposing {
-                TextEditor(text: $draft)
-                    .font(.system(size: 12, design: .serif))
-                    .foregroundStyle(c.text)
-                    .scrollContentBackground(.hidden)
-                    .background(c.background.opacity(0.5))
-                    .frame(minHeight: 48, maxHeight: 120)
-                    .padding(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(c.accent.opacity(0.45), lineWidth: 0.5)
-                    )
-                    .focused($focused)
+                FocusStableTextEditor(
+                    text: $draft,
+                    isFocused: $focused,
+                    font: Self.editorFont,
+                    textColor: NSColor(c.text),
+                    onCommit: commit
+                )
+                .frame(minHeight: 48, maxHeight: 120)
+                .padding(6)
+                .background(c.background.opacity(0.5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(c.accent.opacity(0.45), lineWidth: 0.5)
+                )
                 HStack {
                     Spacer()
                     Button("Cancel") { cancel() }
@@ -602,6 +616,10 @@ struct AnnotationReplyBox: View {
             } else {
                 Button {
                     isComposing = true
+                    // Defer focus by one runloop pass so the
+                    // NSViewRepresentable's makeNSView has installed
+                    // the text view before we ask the window to focus
+                    // it.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         focused = true
                     }
@@ -616,11 +634,16 @@ struct AnnotationReplyBox: View {
                 .buttonStyle(.plain)
             }
         }
-        .onChange(of: focused) { _, isFocused in
-            if isFocused { installReturnMonitor() } else { removeReturnMonitor() }
-        }
-        .onDisappear { removeReturnMonitor() }
     }
+
+    private static let editorFont: NSFont = {
+        let size: CGFloat = 12
+        if let descriptor = NSFont.systemFont(ofSize: size).fontDescriptor.withDesign(.serif),
+           let font = NSFont(descriptor: descriptor, size: size) {
+            return font
+        }
+        return NSFont.systemFont(ofSize: size)
+    }()
 
     private func commit() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -639,25 +662,6 @@ struct AnnotationReplyBox: View {
         isComposing = false
         focused = false
         draft = ""
-    }
-
-    private func installReturnMonitor() {
-        guard returnKeyMonitor == nil else { return }
-        returnKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let isReturn = event.keyCode == 36 || event.keyCode == 76
-            guard isReturn, !event.modifierFlags.contains(.shift) else {
-                return event
-            }
-            commit()
-            return nil
-        }
-    }
-
-    private func removeReturnMonitor() {
-        if let m = returnKeyMonitor {
-            NSEvent.removeMonitor(m)
-            returnKeyMonitor = nil
-        }
     }
 }
 
