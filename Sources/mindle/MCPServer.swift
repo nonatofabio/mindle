@@ -163,26 +163,7 @@ final class MCPServer {
                 }
                 let iso = ISO8601DateFormatter()
                 return anns.map { ann -> [String: Any] in
-                    var payload: [String: Any] = [
-                        "id": ann.id.uuidString,
-                        "text": ann.text,
-                        "prefix": ann.prefix,
-                        "suffix": ann.suffix,
-                        "note": ann.note,
-                        "author": ann.author ?? "user",
-                        "createdAt": iso.string(from: ann.createdAt)
-                    ]
-                    if let thread = ann.thread, !thread.isEmpty {
-                        payload["thread"] = thread.map { msg -> [String: Any] in
-                            [
-                                "id": msg.id.uuidString,
-                                "author": msg.author,
-                                "text": msg.text,
-                                "createdAt": iso.string(from: msg.createdAt)
-                            ]
-                        }
-                    }
-                    return payload
+                    encodeAnnotation(ann, iso: iso)
                 }
             }
             guard let annotations = result else {
@@ -262,6 +243,39 @@ final class MCPServer {
             }
             return ["ok": false, "error": "annotation not found (file may not be open or id is stale)"]
 
+        case "wait_for_annotation_event":
+            let rawTimeout = (request["timeout_seconds"] as? Double) ?? 60.0
+            let timeoutSeconds = max(5.0, min(300.0, rawTimeout))
+            let sinceID = request["since_event_id"] as? Int
+            let result = await AnnotationEventLog.shared.wait(
+                sinceID: sinceID,
+                timeoutSeconds: timeoutSeconds,
+                excludingClientID: clientID
+            )
+            let iso = ISO8601DateFormatter()
+            let payload: [[String: Any]] = result.events.map { ev in
+                var entry: [String: Any] = [
+                    "event_id": ev.id,
+                    "type": ev.kind.rawValue,
+                    "path": ev.path,
+                    "annotation_id": ev.annotationID.uuidString,
+                    "occurred_at": iso.string(from: ev.occurredAt)
+                ]
+                if let ann = ev.annotation {
+                    entry["annotation"] = encodeAnnotation(ann, iso: iso)
+                }
+                if let mid = ev.messageID {
+                    entry["message_id"] = mid.uuidString
+                }
+                return entry
+            }
+            return [
+                "ok": true,
+                "events": payload,
+                "last_event_id": result.lastEventID,
+                "gap": result.gap
+            ]
+
         default:
             return ["ok": false, "error": "unknown op: \(op)"]
         }
@@ -320,5 +334,31 @@ final class MCPServer {
             }
             return true
         }
+    }
+
+    private static func encodeAnnotation(
+        _ ann: Annotation,
+        iso: ISO8601DateFormatter
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "id": ann.id.uuidString,
+            "text": ann.text,
+            "prefix": ann.prefix,
+            "suffix": ann.suffix,
+            "note": ann.note,
+            "author": ann.author ?? "user",
+            "createdAt": iso.string(from: ann.createdAt)
+        ]
+        if let thread = ann.thread, !thread.isEmpty {
+            payload["thread"] = thread.map { msg -> [String: Any] in
+                [
+                    "id": msg.id.uuidString,
+                    "author": msg.author,
+                    "text": msg.text,
+                    "createdAt": iso.string(from: msg.createdAt)
+                ]
+            }
+        }
+        return payload
     }
 }
