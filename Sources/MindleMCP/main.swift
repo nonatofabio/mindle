@@ -208,6 +208,25 @@ struct MindleMCP {
                     "required": ["path", "text", "prefix", "suffix", "note"],
                     "additionalProperties": false
                 ]
+            ],
+            [
+                "name": "wait_for_annotation_event",
+                "description": "Long-poll for the next user annotation event in Mindle. Use this to run an ambient collaboration loop: the user annotates a file in Mindle, you wake up here with the event payload, address it (read context, edit the file, comment_on_annotation or clear_annotation as appropriate), then call wait_for_annotation_event again. Wakeup events are: a new annotation, a user reply in an existing thread, an annotation deletion. Your own mutations (clear_annotation, comment_on_annotation, create_annotation) never wake you. Before starting the loop, call list_open_files and get_annotations on each open file so you have baseline context. The result includes 'events' (possibly empty if the timeout elapsed — call again), 'last_event_id' (pass back as since_event_id), and 'gap' (true if events were dropped between calls — rebaseline with get_annotations).",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "timeout_seconds": [
+                            "type": "number",
+                            "description": "How long to wait for an event before returning empty. Server clamps to [5, 300]. Default 60.",
+                            "default": 60
+                        ],
+                        "since_event_id": [
+                            "type": "integer",
+                            "description": "The last_event_id from your previous wait_for_annotation_event call. Pass null on the first call to wait for events from now forward."
+                        ]
+                    ],
+                    "additionalProperties": false
+                ]
             ]
         ]
     }
@@ -317,6 +336,48 @@ struct MindleMCP {
             ) { resp in
                 let newID = (resp["id"] as? String) ?? "?"
                 return textContent("Opened annotation \(newID) on \(path).")
+            }
+
+        case "wait_for_annotation_event":
+            var body: [String: Any] = [:]
+            if let t = arguments["timeout_seconds"] {
+                body["timeout_seconds"] = t
+            }
+            if let s = arguments["since_event_id"] {
+                body["since_event_id"] = s
+            }
+            return callMindle(op: "wait_for_annotation_event", body: body) { resp in
+                guard let events = resp["events"] as? [[String: Any]] else {
+                    return errorContent("malformed response from Mindle")
+                }
+                let lastEventID = (resp["last_event_id"] as? Int) ?? 0
+                let gap = (resp["gap"] as? Bool) ?? false
+                if events.isEmpty {
+                    let gapNote = gap ? " (gap=true; rebaseline via get_annotations)" : ""
+                    return textContent("No new events. last_event_id=\(lastEventID)\(gapNote)")
+                }
+                var lines: [String] = ["Events (last_event_id=\(lastEventID), gap=\(gap)):"]
+                for ev in events {
+                    let id = (ev["event_id"] as? Int) ?? 0
+                    let kind = (ev["type"] as? String) ?? "?"
+                    let path = (ev["path"] as? String) ?? "?"
+                    let annID = (ev["annotation_id"] as? String) ?? "?"
+                    lines.append("- [event \(id)] \(kind) on \(path) (annotation \(annID))")
+                    if let ann = ev["annotation"] as? [String: Any] {
+                        let note = (ann["note"] as? String) ?? ""
+                        if !note.isEmpty {
+                            lines.append("    Note: \(note)")
+                        }
+                        if let thread = ann["thread"] as? [[String: Any]], !thread.isEmpty {
+                            if let last = thread.last,
+                               let mAuthor = last["author"] as? String,
+                               let mText = last["text"] as? String {
+                                lines.append("    Latest message (\(mAuthor)): \(mText)")
+                            }
+                        }
+                    }
+                }
+                return textContent(lines.joined(separator: "\n"))
             }
 
         default:
