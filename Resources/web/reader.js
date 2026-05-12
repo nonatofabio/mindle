@@ -728,6 +728,17 @@
     }
 
     applySearchMarks();
+
+    // Re-attach diff affordances every render. applyAll() rebuilds
+    // doc.innerHTML from renderedHTML, which contains the inline
+    // ✓ Keep / ✗ Revert buttons as static HTML but no event handlers,
+    // and never has the banner. Any path that re-renders during an
+    // in-flight diff (annotation change, search update) must restore
+    // both — otherwise the buttons silently stop working.
+    if (diffChunks.length) {
+      attachDiffHandlers();
+      injectDiffBanner();
+    }
   }
 
   async function renderMermaidBlocks() {
