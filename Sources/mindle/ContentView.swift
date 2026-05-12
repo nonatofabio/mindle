@@ -364,15 +364,10 @@ struct AnnotationCard: View {
     @State private var isEditing: Bool = false
     @FocusState private var noteFocused: Bool
 
-    @State private var replyDraft: String = ""
-    @State private var isReplying: Bool = false
-    @FocusState private var replyFocused: Bool
-
-    /// Single NSEvent monitor shared between the note editor and the
-    /// reply editor — only one of the two TextEditors can be focused
-    /// at a time, so the closure dispatches to whichever commit action
-    /// matches the current focus. Catches bare Return to commit;
-    /// Shift+Return falls through and inserts a newline.
+    /// NSEvent monitor for the note editor's Return-to-commit. The reply
+    /// box runs its own monitor inside AnnotationReplyBox so a thread
+    /// update from another author can't disturb the user's reply
+    /// composition.
     @State private var returnKeyMonitor: Any? = nil
 
     private var isAgentAuthored: Bool { annotation.author == "agent" }
@@ -489,46 +484,8 @@ struct AnnotationCard: View {
                 .padding(.top, 2)
             }
 
-            if isReplying {
-                TextEditor(text: $replyDraft)
-                    .font(.system(size: 12, design: .serif))
-                    .foregroundStyle(c.text)
-                    .scrollContentBackground(.hidden)
-                    .background(c.background.opacity(0.5))
-                    .frame(minHeight: 48, maxHeight: 120)
-                    .padding(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(c.accent.opacity(0.45), lineWidth: 0.5)
-                    )
-                    .focused($replyFocused)
-                HStack {
-                    Spacer()
-                    Button("Cancel") { cancelReply() }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 11))
-                        .foregroundStyle(c.muted)
-                    Button("Send") { commitReply() }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(c.accent)
-                        .disabled(replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            } else if canReply {
-                Button {
-                    isReplying = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        replyFocused = true
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrowshape.turn.up.left")
-                        Text("Reply")
-                    }
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(c.accent)
-                }
-                .buttonStyle(.plain)
+            if canReply {
+                AnnotationReplyBox(annotationID: annotation.id)
             }
         }
         .padding(12)
@@ -565,8 +522,9 @@ struct AnnotationCard: View {
                 }
             }
         }
-        .onChange(of: noteFocused) { _, _ in syncReturnMonitor() }
-        .onChange(of: replyFocused) { _, _ in syncReturnMonitor() }
+        .onChange(of: noteFocused) { _, focused in
+            if focused { installReturnMonitor() } else { removeReturnMonitor() }
+        }
         .onDisappear { removeReturnMonitor() }
     }
 
@@ -576,38 +534,111 @@ struct AnnotationCard: View {
         store.editingAnnotationID = nil
     }
 
-    private func commitReply() {
-        let trimmed = replyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let url = store.fileURL else { cancelReply(); return }
+    /// Local keyDown monitor for the note editor only. The reply box
+    /// owns its own monitor so its lifecycle is independent of any
+    /// other state on this card.
+    private func installReturnMonitor() {
+        guard returnKeyMonitor == nil else { return }
+        returnKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let isReturn = event.keyCode == 36 || event.keyCode == 76
+            guard isReturn, !event.modifierFlags.contains(.shift) else {
+                return event
+            }
+            if noteFocused { commitNote(); return nil }
+            return event
+        }
+    }
+
+    private func removeReturnMonitor() {
+        if let m = returnKeyMonitor {
+            NSEvent.removeMonitor(m)
+            returnKeyMonitor = nil
+        }
+    }
+}
+
+/// Reply composer for one annotation. Lives as its own SwiftUI view
+/// so its @State and @FocusState are isolated from re-renders driven
+/// by thread updates on the parent AnnotationCard. When another
+/// author (the agent) posts to the thread, the AnnotationCard rebuilds
+/// — but this box keeps its draft, its composing state, and the
+/// focused TextEditor as-is. Typing keeps working.
+struct AnnotationReplyBox: View {
+    let annotationID: UUID
+    @EnvironmentObject var store: DocumentStore
+    @State private var draft: String = ""
+    @State private var isComposing: Bool = false
+    @FocusState private var focused: Bool
+    @State private var returnKeyMonitor: Any? = nil
+
+    var body: some View {
+        let c = store.theme.colors
+        VStack(alignment: .leading, spacing: 6) {
+            if isComposing {
+                TextEditor(text: $draft)
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(c.text)
+                    .scrollContentBackground(.hidden)
+                    .background(c.background.opacity(0.5))
+                    .frame(minHeight: 48, maxHeight: 120)
+                    .padding(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(c.accent.opacity(0.45), lineWidth: 0.5)
+                    )
+                    .focused($focused)
+                HStack {
+                    Spacer()
+                    Button("Cancel") { cancel() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11))
+                        .foregroundStyle(c.muted)
+                    Button("Send") { commit() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(c.accent)
+                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            } else {
+                Button {
+                    isComposing = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        focused = true
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrowshape.turn.up.left")
+                        Text("Reply")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(c.accent)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .onChange(of: focused) { _, isFocused in
+            if isFocused { installReturnMonitor() } else { removeReturnMonitor() }
+        }
+        .onDisappear { removeReturnMonitor() }
+    }
+
+    private func commit() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = store.fileURL else { cancel(); return }
         store.appendThreadMessage(
             forPath: url.path,
-            annotationID: annotation.id,
+            annotationID: annotationID,
             author: "user",
             text: trimmed
         )
-        replyDraft = ""
-        cancelReply()
+        draft = ""
+        cancel()
     }
 
-    private func cancelReply() {
-        isReplying = false
-        replyFocused = false
-        replyDraft = ""
-    }
-
-    /// Local keyDown monitor. SwiftUI's TextEditor wraps an NSTextView
-    /// that insists on inserting a newline for Return; the monitor sees
-    /// the event first and can swallow it when no Shift is held,
-    /// routing instead to commit. Shift+Return falls through to the
-    /// TextEditor's default newline insertion. One monitor serves both
-    /// fields; the closure dispatches based on which @FocusState is
-    /// currently true at the time of the press.
-    private func syncReturnMonitor() {
-        if noteFocused || replyFocused {
-            installReturnMonitor()
-        } else {
-            removeReturnMonitor()
-        }
+    private func cancel() {
+        isComposing = false
+        focused = false
+        draft = ""
     }
 
     private func installReturnMonitor() {
@@ -617,9 +648,8 @@ struct AnnotationCard: View {
             guard isReturn, !event.modifierFlags.contains(.shift) else {
                 return event
             }
-            if replyFocused { commitReply(); return nil }
-            if noteFocused { commitNote(); return nil }
-            return event
+            commit()
+            return nil
         }
     }
 
