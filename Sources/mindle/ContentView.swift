@@ -371,6 +371,22 @@ struct AnnotationsSidebar: View {
                             }
                         }
                     }
+                    .onAppear {
+                        // Sidebar was closed when the user hit ⌘⇧N.
+                        // focusedAnnotation got set BEFORE the
+                        // ScrollViewReader existed, so .onChange
+                        // missed the transition. Catch the
+                        // already-set value here when the sidebar
+                        // finally mounts. Longer defer than .onChange
+                        // because we're also racing the sidebar's
+                        // open animation.
+                        guard let id = store.focusedAnnotation else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                proxy.scrollTo(id, anchor: .center)
+                            }
+                        }
+                    }
                 }
             }
         }
