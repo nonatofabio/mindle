@@ -39,6 +39,28 @@ final class AnnotationEventLog {
     private var nextID: Int = 1
     private let capacity: Int = 256
 
+    /// One pending wait() call. The continuation is resumed exactly once —
+    /// either by `signalWaiters()` when an event arrives that the waiter
+    /// cares about, or by the timeout task when `timeoutSeconds` elapses.
+    private final class Waiter {
+        let sinceID: Int?
+        let excludingClientID: String?
+        let continuation: CheckedContinuation<(events: [AnnotationEvent], lastEventID: Int, gap: Bool), Never>
+        var resumed: Bool = false
+
+        init(
+            sinceID: Int?,
+            excludingClientID: String?,
+            continuation: CheckedContinuation<(events: [AnnotationEvent], lastEventID: Int, gap: Bool), Never>
+        ) {
+            self.sinceID = sinceID
+            self.excludingClientID = excludingClientID
+            self.continuation = continuation
+        }
+    }
+
+    private var waiters: [Waiter] = []
+
     private init() {}
 
     /// Append a new event. Caller supplies the payload (kind, path, etc.);
@@ -66,6 +88,7 @@ final class AnnotationEventLog {
         if events.count > capacity {
             events.removeFirst(events.count - capacity)
         }
+        signalWaiters()
     }
 
     /// Read-only snapshot. Returns events with id > sinceID whose
@@ -89,5 +112,72 @@ final class AnnotationEventLog {
             ev.clientID != excludingClientID
         }
         return (filtered, lastID, gap)
+    }
+
+    /// Long-poll for the next event matching the filter. Returns the
+    /// current snapshot immediately if it already contains events the
+    /// caller hasn't seen; otherwise blocks for up to timeoutSeconds.
+    ///
+    /// Note: `sinceID == nil` means "from now" — only events appended
+    /// AFTER this call returns. This matches the spec's "agent calls
+    /// get_annotations to baseline, then watches for new events."
+    func wait(
+        sinceID: Int?,
+        timeoutSeconds: Double,
+        excludingClientID: String?
+    ) async -> (events: [AnnotationEvent], lastEventID: Int, gap: Bool) {
+        let snap = snapshot(sinceID: sinceID, excludingClientID: excludingClientID)
+        if !snap.events.isEmpty || snap.gap {
+            return snap
+        }
+
+        return await withCheckedContinuation { continuation in
+            let waiter = Waiter(
+                sinceID: sinceID,
+                excludingClientID: excludingClientID,
+                continuation: continuation
+            )
+            waiters.append(waiter)
+
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                self.resume(waiter, withEmpty: true)
+            }
+        }
+    }
+
+    private func signalWaiters() {
+        let pending = waiters
+        for waiter in pending {
+            let snap = snapshot(
+                sinceID: waiter.sinceID,
+                excludingClientID: waiter.excludingClientID
+            )
+            if !snap.events.isEmpty || snap.gap {
+                resume(waiter, withEmpty: false)
+            }
+        }
+    }
+
+    private func resume(
+        _ waiter: Waiter,
+        withEmpty: Bool
+    ) {
+        guard !waiter.resumed else { return }
+        waiter.resumed = true
+        if let idx = waiters.firstIndex(where: { $0 === waiter }) {
+            waiters.remove(at: idx)
+        }
+        if withEmpty {
+            waiter.continuation.resume(
+                returning: ([], nextID - 1, false)
+            )
+        } else {
+            let snap = snapshot(
+                sinceID: waiter.sinceID,
+                excludingClientID: waiter.excludingClientID
+            )
+            waiter.continuation.resume(returning: snap)
+        }
     }
 }
