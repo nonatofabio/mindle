@@ -304,6 +304,7 @@ struct SearchBar: View {
 
 struct AnnotationsSidebar: View {
     @EnvironmentObject var store: DocumentStore
+    @State private var showingIdentityAlert = false
 
     var body: some View {
         let c = store.theme.colors
@@ -315,6 +316,15 @@ struct AnnotationsSidebar: View {
                     .font(.system(size: 13, weight: .semibold, design: .serif))
                     .foregroundStyle(c.text)
                 Spacer()
+
+                Button { store.requestNote() } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(c.accent)
+                }
+                .buttonStyle(.plain)
+                .help("Add comment on selection (⌘⇧N)")
+
                 Text("\(store.annotations.count)")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(c.muted)
@@ -326,6 +336,24 @@ struct AnnotationsSidebar: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+
+            // Identity badge
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Color(hex: IdentityManager.shared.color))
+                    .frame(width: 7, height: 7)
+                Text(IdentityManager.shared.isConfigured ? IdentityManager.shared.alias : "anonymous")
+                    .font(.system(size: 10))
+                    .foregroundStyle(c.muted)
+                Spacer()
+                Text("click to change")
+                    .font(.system(size: 9))
+                    .foregroundStyle(c.muted.opacity(0.5))
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 6)
+            .contentShape(Rectangle())
+            .onTapGesture { showIdentityAlert() }
 
             Rectangle().fill(c.rule.opacity(0.4)).frame(height: 0.5)
 
@@ -391,6 +419,25 @@ struct AnnotationsSidebar: View {
             }
         }
         .background(c.sidebar)
+    }
+
+    private func showIdentityAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Set Identity"
+        alert.informativeText = "Your alias for annotations (min 2 chars)"
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        input.stringValue = IdentityManager.shared.alias
+        input.placeholderString = "e.g. ash"
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
+        if alert.runModal() == .alertFirstButtonReturn {
+            let alias = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if alias.count >= 2 {
+                IdentityManager.shared.save(alias: alias, displayName: alias, color: IdentityManager.shared.color)
+            }
+        }
     }
 }
 
