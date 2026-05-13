@@ -380,6 +380,9 @@ struct MindleCommands: Commands {
             Button("Toggle Theme") { store?.toggleTheme() }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
                 .disabled(store == nil)
+
+            Button("Debug Console") { DebugConsole.shared.toggle() }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
         }
     }
 }

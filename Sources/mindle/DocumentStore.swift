@@ -1026,6 +1026,7 @@ final class DocumentStore: ObservableObject {
         annotations[idx].status = .resolved
         annotations[idx].resolvedBy = user ?? IdentityManager.shared.alias
         annotations[idx].resolvedAt = Date()
+        DebugConsole.shared.log("Resolved annotation \(id.uuidString.prefix(8)) by \(annotations[idx].resolvedBy ?? "?")")
         saveSidecar()
     }
 
@@ -1040,6 +1041,7 @@ final class DocumentStore: ObservableObject {
     func assignAnnotation(id: UUID, to assignee: String) {
         guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
         annotations[idx].assignee = assignee
+        DebugConsole.shared.log("Assigned \(id.uuidString.prefix(8)) → \(assignee)")
         saveSidecar()
     }
 
@@ -1049,6 +1051,7 @@ final class DocumentStore: ObservableObject {
         if !existing.contains(label) {
             existing.append(label)
             annotations[idx].labels = existing
+            DebugConsole.shared.log("Label +\(label) on \(id.uuidString.prefix(8))")
             saveSidecar()
         }
     }
