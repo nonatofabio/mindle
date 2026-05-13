@@ -36,6 +36,17 @@ struct Annotation: Identifiable, Codable, Equatable {
     /// no replies so existing sidecars round-trip without growth and
     /// the JSON stays minimal for the common case.
     var thread: [AnnotationMessage]?
+
+    // Collab extensions (all optional for backward compat with existing sidecars)
+    var status: AnnotationStatus?    // nil treated as .open
+    var assignee: String?            // collaborator alias
+    var labels: [String]?            // e.g. ["question", "blocker"]
+    var resolvedBy: String?
+    var resolvedAt: Date?
+}
+
+enum AnnotationStatus: String, Codable {
+    case open, resolved, wontfix
 }
 
 struct FileNode: Identifiable, Equatable {
@@ -67,6 +78,8 @@ final class DocumentStore: ObservableObject {
     @Published var fileURL: URL?
     @Published var rawText: String = ""
     @Published var annotations: [Annotation] = []
+    /// Collaborator registry loaded from sidecar — maps alias to display info.
+    @Published var collaborators: [String: SidecarCollaborator] = [:]
     /// Baseline for diff-on-reload. When `lastSyncedText != rawText`, the
     /// reader view shows track-changes between the two. Accepting clears
     /// the diff (lastSyncedText := rawText); rejecting reverts the
@@ -936,6 +949,15 @@ final class DocumentStore: ObservableObject {
         /// it left off. Nil when there's no in-flight diff (the common
         /// case), so existing v1.5 sidecars decode cleanly.
         var lastSyncedText: String?
+        /// Collaborator registry — maps alias to display info. Optional
+        /// so existing sidecars without collab decode cleanly.
+        var collaborators: [String: SidecarCollaborator]?
+    }
+
+    struct SidecarCollaborator: Codable, Equatable {
+        var displayName: String
+        var color: String
+        var type: String?  // "human" or "agent"
     }
 
     private func loadSidecar() {
@@ -945,6 +967,7 @@ final class DocumentStore: ObservableObject {
         decoder.dateDecodingStrategy = .iso8601
         if let decoded = try? decoder.decode(Sidecar.self, from: data) {
             annotations = decoded.annotations
+            collaborators = decoded.collaborators ?? [:]
             if let t = decoded.theme { theme = t }
             if let s = decoded.fontScale { fontScale = s }
             if let baseline = decoded.lastSyncedText {
@@ -978,15 +1001,67 @@ final class DocumentStore: ObservableObject {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
+        // Register current user in collaborators
+        var collabs = collaborators
+        let im = IdentityManager.shared
+        if im.isConfigured {
+            collabs[im.alias] = im.asSidecarCollaborator()
+        }
         let sidecar = Sidecar(
             annotations: annotations,
             theme: theme,
             fontScale: fontScale,
-            lastSyncedText: lastSynced
+            lastSyncedText: lastSynced,
+            collaborators: collabs.isEmpty ? nil : collabs
         )
         if let data = try? encoder.encode(sidecar) {
             try? data.write(to: url, options: .atomic)
         }
+    }
+
+    // MARK: - Collab Actions
+
+    func resolveAnnotation(id: UUID, by user: String? = nil) {
+        guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        annotations[idx].status = .resolved
+        annotations[idx].resolvedBy = user ?? IdentityManager.shared.alias
+        annotations[idx].resolvedAt = Date()
+        saveSidecar()
+    }
+
+    func reopenAnnotation(id: UUID) {
+        guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        annotations[idx].status = .open
+        annotations[idx].resolvedBy = nil
+        annotations[idx].resolvedAt = nil
+        saveSidecar()
+    }
+
+    func assignAnnotation(id: UUID, to assignee: String) {
+        guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        annotations[idx].assignee = assignee
+        saveSidecar()
+    }
+
+    func addLabel(to id: UUID, label: String) {
+        guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        var existing = annotations[idx].labels ?? []
+        if !existing.contains(label) {
+            existing.append(label)
+            annotations[idx].labels = existing
+            saveSidecar()
+        }
+    }
+
+    func removeLabel(from id: UUID, label: String) {
+        guard let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        annotations[idx].labels?.removeAll { $0 == label }
+        saveSidecar()
+    }
+
+    /// Ensures the current user is in the sidecar's collaborators registry.
+    private func ensureCollaboratorRegistered() {
+        // This is called on save — we'll register in saveSidecar
     }
 
     // MARK: - Export

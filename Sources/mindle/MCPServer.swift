@@ -282,6 +282,37 @@ final class MCPServer {
                 "gap": result.gap
             ]
 
+        case "resolve_annotation":
+            guard let path = request["path"] as? String,
+                  let idStr = request["id"] as? String, let id = UUID(uuidString: idStr) else {
+                return ["ok": false, "error": "missing 'path' or 'id'"]
+            }
+            let author = (request["author"] as? String) ?? "agent"
+            let resolved = await MainActor.run {
+                AppDelegate.shared?.resolveAnnotation(forPath: path, id: id, by: author) ?? false
+            }
+            return resolved ? ["ok": true] : ["ok": false, "error": "annotation not found"]
+
+        case "assign_annotation":
+            guard let path = request["path"] as? String,
+                  let idStr = request["id"] as? String, let id = UUID(uuidString: idStr),
+                  let assignee = request["assignee"] as? String else {
+                return ["ok": false, "error": "missing 'path', 'id', or 'assignee'"]
+            }
+            let assigned = await MainActor.run {
+                AppDelegate.shared?.assignAnnotation(forPath: path, id: id, to: assignee) ?? false
+            }
+            return assigned ? ["ok": true] : ["ok": false, "error": "annotation not found"]
+
+        case "get_collaborators":
+            guard let path = request["path"] as? String else {
+                return ["ok": false, "error": "missing 'path'"]
+            }
+            let result = await MainActor.run {
+                AppDelegate.shared?.collaborators(forPath: path)
+            }
+            return ["ok": true, "collaborators": result ?? [:]]
+
         default:
             return ["ok": false, "error": "unknown op: \(op)"]
         }

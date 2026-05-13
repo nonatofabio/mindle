@@ -142,6 +142,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return nil
     }
 
+    func resolveAnnotation(forPath path: String, id: UUID, by author: String) -> Bool {
+        let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+        for ref in registeredStores {
+            if ref.store?.fileURL?.path == normalized {
+                ref.store?.resolveAnnotation(id: id, by: author)
+                return true
+            }
+        }
+        return false
+    }
+
+    func assignAnnotation(forPath path: String, id: UUID, to assignee: String) -> Bool {
+        let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+        for ref in registeredStores {
+            if ref.store?.fileURL?.path == normalized {
+                ref.store?.assignAnnotation(id: id, to: assignee)
+                return true
+            }
+        }
+        return false
+    }
+
+    func collaborators(forPath path: String) -> [String: Any]? {
+        let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+        for ref in registeredStores {
+            if ref.store?.fileURL?.path == normalized {
+                let collabs = ref.store?.collaborators ?? [:]
+                var result: [String: Any] = [:]
+                for (k, v) in collabs {
+                    result[k] = ["displayName": v.displayName, "color": v.color, "type": v.type ?? "human"]
+                }
+                return result
+            }
+        }
+        return nil
+    }
+
     func application(_ sender: NSApplication, open urls: [URL]) {
         if let store = activeStore {
             for url in urls {
