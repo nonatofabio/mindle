@@ -1176,8 +1176,7 @@
       mark.dataset.annId = ann.id;
       mark.classList.toggle("has-note", !!(ann.note && ann.note.length));
       if (ann.color) {
-        mark.style.backgroundColor = ann.color + "33";
-        mark.style.borderBottom = "2px solid " + ann.color;
+        mark.style.setProperty('--collab-color', ann.color);
       }
       mark.textContent = highlighted;
 

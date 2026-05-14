@@ -220,6 +220,10 @@ mark.mindle-hl {
   border-radius: 2px;
   cursor: pointer;
 }
+mark.mindle-hl[style*="--collab-color"] {
+  background: color-mix(in srgb, var(--collab-color) 20%, transparent);
+  border-bottom: 2px solid var(--collab-color);
+}
 mark.mindle-hl.has-note {
   background: var(--highlight-note);
 }

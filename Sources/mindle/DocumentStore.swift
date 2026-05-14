@@ -1076,10 +1076,6 @@ final class DocumentStore: ObservableObject {
     }
 
     /// Ensures the current user is in the sidecar's collaborators registry.
-    private func ensureCollaboratorRegistered() {
-        // This is called on save — we'll register in saveSidecar
-    }
-
     // MARK: - Export
 
     enum ExportFormat { case markdown, json }
