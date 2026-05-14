@@ -33,16 +33,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         super.init()
         AppDelegate.shared = self
-
-        // ⌘⇧D — toggle debug console (bypasses WKWebView key capture)
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            if event.modifierFlags.contains([.command, .shift]),
-               event.charactersIgnoringModifiers == "d" {
-                DebugConsole.shared.toggle()
-                return nil
-            }
-            return event
-        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
