@@ -323,6 +323,13 @@ struct MindleCommands: Commands {
             .keyboardShortcut("n", modifiers: [.command, .shift])
             .disabled(store == nil)
 
+            Button("Add Comment to Selection") {
+                store?.showAnnotations = true
+                store?.requestNote()
+            }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
+            .disabled(store == nil)
+
             Divider()
             Button("Keep All Changes") { store?.acceptAllChanges() }
                 .keyboardShortcut(.return, modifiers: [.command, .option])
