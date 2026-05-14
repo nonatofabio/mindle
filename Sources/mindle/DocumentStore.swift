@@ -538,13 +538,20 @@ final class DocumentStore: ObservableObject {
 
     /// Bump the request signal — WebReaderView observes this, fetches the
     /// live selection from JS, and calls applyHighlight with fresh values.
-    func requestHighlight() { highlightRequestedAt = Date() }
-    func requestNote() { noteRequestedAt = Date() }
+    func requestHighlight() {
+        DebugConsole.shared.log("HIGHLIGHT requested")
+        highlightRequestedAt = Date()
+    }
+    func requestNote() {
+        DebugConsole.shared.log("NOTE requested")
+        noteRequestedAt = Date()
+    }
 
     /// Called by WebReaderView once the JS round-trip returns the live
     /// selection. Overwrites the cached selection with the fresh capture,
     /// then runs the standard highlight/note path.
     func applyHighlight(text: String, prefix: String, suffix: String) {
+        DebugConsole.shared.log("HIGHLIGHT: '\(text.prefix(30))'")
         selectionText = text
         selectionPrefix = prefix
         selectionSuffix = suffix
@@ -552,6 +559,7 @@ final class DocumentStore: ObservableObject {
     }
 
     func applyNote(text: String, prefix: String, suffix: String) {
+        DebugConsole.shared.log("NOTE: '\(text.prefix(30))'")
         selectionText = text
         selectionPrefix = prefix
         selectionSuffix = suffix
@@ -700,6 +708,7 @@ final class DocumentStore: ObservableObject {
         text: String,
         clientID: String? = nil
     ) -> Bool {
+        DebugConsole.shared.log("REPLY: to \(annotationID.uuidString.prefix(8)) by \(author)")
         let message = AnnotationMessage(author: author, text: text)
         if let active = activeTabID,
            let i = tabs.firstIndex(where: { $0.id == active }),
@@ -968,6 +977,7 @@ final class DocumentStore: ObservableObject {
         if let decoded = try? decoder.decode(Sidecar.self, from: data) {
             annotations = decoded.annotations
             collaborators = decoded.collaborators ?? [:]
+            DebugConsole.shared.log("LOAD: \(annotations.count) annotations, \(collaborators.count) collaborators")
             if let t = decoded.theme { theme = t }
             if let s = decoded.fontScale { fontScale = s }
             if let baseline = decoded.lastSyncedText {
@@ -978,6 +988,7 @@ final class DocumentStore: ObservableObject {
 
     func saveSidecar() {
         guard let url = sidecarURL else { return }
+        DebugConsole.shared.log("SAVE: \(annotations.count) annotations")
         let baseline = (lastSyncedText != rawText) ? lastSyncedText : nil
         writeSidecar(to: url, annotations: annotations, lastSynced: baseline)
     }
