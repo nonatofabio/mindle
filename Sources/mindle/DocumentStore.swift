@@ -589,7 +589,8 @@ final class DocumentStore: ObservableObject {
                 text: selectionText,
                 prefix: selectionPrefix,
                 suffix: selectionSuffix,
-                note: ""
+                note: "",
+                author: IdentityManager.shared.alias
             )
             annotations.append(ann)
             if let url = fileURL {
@@ -618,7 +619,8 @@ final class DocumentStore: ObservableObject {
                 text: selectionText,
                 prefix: selectionPrefix,
                 suffix: selectionSuffix,
-                note: ""
+                note: "",
+                author: IdentityManager.shared.alias
             )
             annotations.append(ann)
             // Defer the `created` event until the user finishes typing

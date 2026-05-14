@@ -1,9 +1,10 @@
 // IdentityManager.swift — Local user identity for team collaboration.
-// Stores alias, display name, and color in UserDefaults.
+// ObservableObject so SwiftUI views refresh when identity changes.
 
 import Foundation
+import SwiftUI
 
-final class IdentityManager {
+final class IdentityManager: ObservableObject {
     static let shared = IdentityManager()
 
     private let defaults = UserDefaults.standard
@@ -18,21 +19,22 @@ final class IdentityManager {
         "#BA68C8", "#4DD0E1", "#F06292", "#AED581"
     ]
 
-    var isConfigured: Bool { defaults.string(forKey: Keys.alias) != nil }
+    @Published var alias: String
+    @Published var displayName: String
+    @Published var color: String
 
-    var alias: String {
-        defaults.string(forKey: Keys.alias) ?? "user"
-    }
+    var isConfigured: Bool { !alias.isEmpty && alias != "user" }
 
-    var displayName: String {
-        defaults.string(forKey: Keys.displayName) ?? alias
-    }
-
-    var color: String {
-        defaults.string(forKey: Keys.color) ?? Self.defaultColors[0]
+    private init() {
+        alias = UserDefaults.standard.string(forKey: Keys.alias) ?? "user"
+        displayName = UserDefaults.standard.string(forKey: Keys.displayName) ?? "user"
+        color = UserDefaults.standard.string(forKey: Keys.color) ?? Self.defaultColors[0]
     }
 
     func save(alias: String, displayName: String, color: String) {
+        self.alias = alias
+        self.displayName = displayName
+        self.color = color
         defaults.set(alias, forKey: Keys.alias)
         defaults.set(displayName, forKey: Keys.displayName)
         defaults.set(color, forKey: Keys.color)

@@ -304,6 +304,7 @@ struct SearchBar: View {
 
 struct AnnotationsSidebar: View {
     @EnvironmentObject var store: DocumentStore
+    @ObservedObject private var identity = IdentityManager.shared
     @State private var showingIdentityAlert = false
 
     var body: some View {
@@ -340,9 +341,9 @@ struct AnnotationsSidebar: View {
             // Identity badge
             HStack(spacing: 6) {
                 Circle()
-                    .fill(Color(hex: IdentityManager.shared.color))
+                    .fill(Color(hex: identity.color))
                     .frame(width: 7, height: 7)
-                Text(IdentityManager.shared.isConfigured ? IdentityManager.shared.alias : "anonymous")
+                Text(identity.isConfigured ? identity.alias : "anonymous")
                     .font(.system(size: 10))
                     .foregroundStyle(c.muted)
                 Spacer()
