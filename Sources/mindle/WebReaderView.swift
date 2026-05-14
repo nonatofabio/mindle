@@ -74,12 +74,14 @@ struct WebReaderView: NSViewRepresentable {
         if store.annotations != coord.lastAnnotations {
             coord.lastAnnotations = store.annotations
             let payload = store.annotations.map { a -> [String: Any] in
-                [
+                let color = store.collaborators[a.author ?? ""]?.color ?? "#FFD700"
+                return [
                     "id": a.id.uuidString,
                     "text": a.text,
                     "prefix": a.prefix,
                     "suffix": a.suffix,
-                    "note": a.note
+                    "note": a.note,
+                    "color": color
                 ]
             }
             if let data = try? JSONSerialization.data(withJSONObject: payload),
