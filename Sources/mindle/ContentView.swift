@@ -671,16 +671,18 @@ struct AnnotationCard: View {
                 .help("Delete")
             }
 
-            Text(annotation.text)
-                .font(.system(size: 12, design: .serif))
-                .foregroundStyle(c.text)
-                .lineLimit(4)
-                .padding(.leading, 8)
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .fill(dotColor.opacity(0.9))
-                        .frame(width: 2)
-                }
+            SelectableText(
+                text: annotation.text,
+                font: AnnotationMessageRow.bodyFont,
+                textColor: NSColor(c.text),
+                maxLines: 4
+            )
+            .padding(.leading, 8)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(dotColor.opacity(0.9))
+                    .frame(width: 2)
+            }
 
             // Hidden for solo-use docs to keep simple highlights clean;
             // surfaces once identity is set (auto-registers in
@@ -1021,10 +1023,11 @@ struct AnnotationMessageRow: View {
                 .fill(stripeColor.opacity(isAgent ? 0.55 : 0.9))
                 .frame(width: isAgent ? 1.5 : 2.5)
             VStack(alignment: .leading, spacing: 3) {
-                Text(message.text)
-                    .font(.system(size: 12, design: .serif))
-                    .foregroundStyle(c.text)
-                    .fixedSize(horizontal: false, vertical: true)
+                SelectableText(
+                    text: message.text,
+                    font: Self.bodyFont,
+                    textColor: NSColor(c.text)
+                )
                 HStack(spacing: 5) {
                     Text(authorLabel)
                         .font(.system(size: 10, weight: .medium))
@@ -1057,6 +1060,15 @@ struct AnnotationMessageRow: View {
         f.dateStyle = .none
         f.timeStyle = .short
         return f
+    }()
+
+    static let bodyFont: NSFont = {
+        let size: CGFloat = 12
+        if let descriptor = NSFont.systemFont(ofSize: size).fontDescriptor.withDesign(.serif),
+           let font = NSFont(descriptor: descriptor, size: size) {
+            return font
+        }
+        return NSFont.systemFont(ofSize: size)
     }()
 }
 

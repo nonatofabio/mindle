@@ -123,6 +123,120 @@ struct FocusStableTextEditor: NSViewRepresentable {
     }
 }
 
+/// Read-only, selectable, word-wrapping text label. Backed by
+/// `NSTextField` so text-selection actually works inside the annotation
+/// sidebar — SwiftUI's `Text(...).textSelection(.enabled)` is unreliable
+/// here because the parent `ForEach(store.annotations)` rebuilds every
+/// card on any store mutation, dropping the in-flight selection.
+/// Same root cause `FocusStableTextEditor` exists for.
+struct SelectableText: NSViewRepresentable {
+    let text: String
+    let font: NSFont
+    let textColor: NSColor
+    /// 0 = unlimited (full wrap). N>0 clamps height to N line-heights and
+    /// truncates with a tail ellipsis.
+    var maxLines: Int = 0
+
+    func makeNSView(context: Context) -> SelectableTextHostView {
+        let host = SelectableTextHostView()
+        host.maxLines = maxLines
+        host.configure(text: text, font: font, textColor: textColor)
+        return host
+    }
+
+    func updateNSView(_ host: SelectableTextHostView, context: Context) {
+        if host.maxLines != maxLines {
+            host.maxLines = maxLines
+        }
+        host.configure(text: text, font: font, textColor: textColor)
+    }
+}
+
+/// AppKit container that owns a non-editable, selectable `NSTextView` and
+/// computes a wrap-aware `intrinsicContentSize` so SwiftUI can lay it out
+/// as a self-sizing block. We can't use a bare `NSTextView` here because
+/// it doesn't expose a wrap-aware intrinsic size — SwiftUI proposes a
+/// width that the text view doesn't read, so it lays out at zero height.
+/// We can't use the `FocusStableTextEditor` `NSScrollView` wrapping
+/// either, because nesting an `NSScrollView` inside SwiftUI's `ScrollView`
+/// fights drag gestures with the outer scroller.
+final class SelectableTextHostView: NSView {
+    private let textView = NSTextView()
+    var maxLines: Int = 0 {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setup()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setup()
+    }
+
+    private func setup() {
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
+        textView.isRichText = false
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.translatesAutoresizingMaskIntoConstraints = true
+        addSubview(textView)
+    }
+
+    func configure(text: String, font: NSFont, textColor: NSColor) {
+        if textView.string != text {
+            textView.string = text
+        }
+        if textView.font != font {
+            textView.font = font
+        }
+        if textView.textColor != textColor {
+            textView.textColor = textColor
+        }
+        invalidateIntrinsicContentSize()
+    }
+
+    override func layout() {
+        super.layout()
+        textView.frame = bounds
+        textView.textContainer?.size = NSSize(
+            width: bounds.width,
+            height: .greatestFiniteMagnitude
+        )
+        invalidateIntrinsicContentSize()
+    }
+
+    override var intrinsicContentSize: NSSize {
+        guard let lm = textView.layoutManager,
+              let tc = textView.textContainer else {
+            return super.intrinsicContentSize
+        }
+        // Force a layout pass at the current width before we read the
+        // used rect — without this, the height comes back as zero on the
+        // first pass and SwiftUI lays the host at 0pt high.
+        tc.size = NSSize(
+            width: max(bounds.width, 1),
+            height: .greatestFiniteMagnitude
+        )
+        lm.ensureLayout(for: tc)
+        var height = lm.usedRect(for: tc).height
+        if maxLines > 0 {
+            let lineHeight = lm.defaultLineHeight(for: textView.font ?? .systemFont(ofSize: 12))
+            height = min(height, CGFloat(maxLines) * lineHeight)
+        }
+        return NSSize(width: NSView.noIntrinsicMetric, height: ceil(height))
+    }
+}
+
 /// NSTextView subclass that routes bare Return through a commit
 /// closure instead of inserting a newline. Shift+Return inserts a real
 /// newline (the multi-line case).
