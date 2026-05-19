@@ -1,4 +1,6 @@
 build/
+.build/
+.vscode/
 .DS_Store
 *.swp
 *.swo

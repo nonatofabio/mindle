@@ -1069,6 +1069,29 @@ final class DocumentStore: ObservableObject {
         loadTabState(target)
     }
 
+    /// Reorder a tab. The dropped tab moves to the position currently
+    /// occupied by `targetID` (inserts before it). The trailing-most
+    /// slot is reached via `moveTabToEnd` — there's no `after` flag here
+    /// because per-tab drop zones only model "insert before".
+    /// No-op if either id is unknown or the move is a no-op.
+    func moveTab(id: UUID, before targetID: UUID) {
+        guard id != targetID,
+              let from = tabs.firstIndex(where: { $0.id == id }),
+              let to = tabs.firstIndex(where: { $0.id == targetID }) else { return }
+        let item = tabs.remove(at: from)
+        let insertIndex = (from < to) ? to - 1 : to
+        tabs.insert(item, at: insertIndex)
+    }
+
+    /// Move a tab to the trailing end of the list. Backs the empty
+    /// drop zone to the right of the last tab in `TabBar`.
+    func moveTabToEnd(id: UUID) {
+        guard let from = tabs.firstIndex(where: { $0.id == id }),
+              from != tabs.count - 1 else { return }
+        let item = tabs.remove(at: from)
+        tabs.append(item)
+    }
+
     func closeTab(id: UUID) {
         guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
         let isActive = (activeTabID == id)

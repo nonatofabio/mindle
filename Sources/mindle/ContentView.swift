@@ -1422,6 +1422,8 @@ struct FileTreeRow: View {
 
 struct TabBar: View {
     @EnvironmentObject var store: DocumentStore
+    @State private var isTrailingDropTarget: Bool = false
+    @State private var tabHeight: CGFloat = 0
 
     var body: some View {
         let c = store.theme.colors
@@ -1431,9 +1433,48 @@ struct TabBar: View {
         HStack(spacing: 0) {
             ForEach(store.tabs) { tab in
                 TabBarItem(tab: tab)
+                    .background(
+                        // Publish the tab's rendered height so the trailing
+                        // insertion stripe can match it without being
+                        // height-flexible (which would make HStack
+                        // vertically greedy and balloon the whole bar).
+                        GeometryReader { p in
+                            Color.clear.preference(
+                                key: TabHeightKey.self,
+                                value: p.size.height
+                            )
+                        }
+                    )
+            }
+            // Insertion stripe right after the last tab while a drag is
+            // hovering the trailing area. Height is locked to the tab
+            // row's height — leaving it unbounded would make HStack
+            // (and so VStack) hand the tab bar all available vertical
+            // space. The drop itself is caught by the background layer.
+            if isTrailingDropTarget && tabHeight > 0 {
+                Rectangle()
+                    .fill(c.accent)
+                    .frame(width: 2, height: tabHeight)
             }
             Spacer(minLength: 0)
         }
+        .onPreferenceChange(TabHeightKey.self) { tabHeight = $0 }
+        .background(
+            // Transparent drop catcher sized to the HStack — covers the
+            // empty trailing area so dropping there moves the tab to the
+            // end. Putting this inline as a sibling of the tabs makes
+            // HStack stretch each TabBarItem to its maxWidth (Color is
+            // layout-flexible, Spacer is not), so we hide it behind.
+            Color.clear
+                .contentShape(Rectangle())
+                .onDrop(
+                    of: [.text],
+                    delegate: TrailingTabDropDelegate(
+                        store: store,
+                        isTarget: $isTrailingDropTarget
+                    )
+                )
+        )
         .background(c.surface.opacity(0.5))
         .overlay(alignment: .bottom) {
             Rectangle().fill(c.rule.opacity(0.4)).frame(height: 0.5)
@@ -1441,10 +1482,45 @@ struct TabBar: View {
     }
 }
 
+private struct TabHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Drop delegate for the empty trailing area of the tab bar. Sends the
+/// dragged tab to the end of the list. Without this, the rightmost slot
+/// can't be reached because per-tab drops only insert _before_ a target.
+private struct TrailingTabDropDelegate: DropDelegate {
+    let store: DocumentStore
+    @Binding var isTarget: Bool
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.text])
+    }
+
+    func dropEntered(info: DropInfo) { isTarget = true }
+    func dropExited(info: DropInfo)  { isTarget = false }
+
+    func performDrop(info: DropInfo) -> Bool {
+        isTarget = false
+        guard let provider = info.itemProviders(for: [.text]).first else { return false }
+        provider.loadObject(ofClass: NSString.self) { item, _ in
+            guard let str = item as? String, let id = UUID(uuidString: str) else { return }
+            Task { @MainActor in
+                store.moveTabToEnd(id: id)
+            }
+        }
+        return true
+    }
+}
+
 struct TabBarItem: View {
     let tab: DocumentTab
     @EnvironmentObject var store: DocumentStore
     @State private var isHovering: Bool = false
+    @State private var isDropTarget: Bool = false
 
     private var remoteTarget: SSHTarget? {
         tab.sourceURL.flatMap(SSHTarget.init(sourceURL:))
@@ -1514,9 +1590,64 @@ struct TabBarItem: View {
             .help("Close tab")
         }
         .background(bg)
+        .overlay(alignment: .leading) {
+            // Insertion indicator while a tab is being dragged onto this
+            // one. Sits on the leading edge — the drop will place the
+            // dragged tab _before_ this one in the list. The trailing-most
+            // slot is reachable via the empty area to the right of the
+            // last tab (see TrailingTabDropDelegate in TabBar).
+            if isDropTarget {
+                Rectangle()
+                    .fill(c.accent)
+                    .frame(width: 2)
+            }
+        }
         .overlay(alignment: .trailing) {
             Rectangle().fill(c.rule.opacity(0.3)).frame(width: 0.5)
         }
         .onHover { isHovering = $0 }
+        .onDrag {
+            // The dragged tab's UUID travels as a plain text string.
+            // SwiftUI's NSItemProvider isn't actor-isolated, so we
+            // build the provider on the calling thread.
+            NSItemProvider(object: tab.id.uuidString as NSString)
+        }
+        .onDrop(
+            of: [.text],
+            delegate: TabDropDelegate(
+                target: tab.id,
+                store: store,
+                isTarget: $isDropTarget
+            )
+        )
+    }
+}
+
+/// Drop delegate for a single tab. Resolves the dragged UUID from the
+/// item provider on drop and asks the store to insert the dragged tab
+/// _before_ this one. The trailing-most slot is handled by a separate
+/// drop zone in `TabBar` (the empty area to the right of the last tab).
+private struct TabDropDelegate: DropDelegate {
+    let target: UUID
+    let store: DocumentStore
+    @Binding var isTarget: Bool
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.text])
+    }
+
+    func dropEntered(info: DropInfo) { isTarget = true }
+    func dropExited(info: DropInfo)  { isTarget = false }
+
+    func performDrop(info: DropInfo) -> Bool {
+        isTarget = false
+        guard let provider = info.itemProviders(for: [.text]).first else { return false }
+        provider.loadObject(ofClass: NSString.self) { item, _ in
+            guard let str = item as? String, let id = UUID(uuidString: str) else { return }
+            Task { @MainActor in
+                store.moveTab(id: id, before: target)
+            }
+        }
+        return true
     }
 }
