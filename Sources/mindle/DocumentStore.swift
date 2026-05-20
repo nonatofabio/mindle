@@ -520,7 +520,12 @@ final class DocumentStore: ObservableObject {
 
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let raw = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: raw),
+        // Be friendly to "arxiv.org/pdf/2407.00143"-style input — prepend
+        // https:// when no scheme is present. The validation below still
+        // rejects anything weird (ftp://, file://, garbage) so this only
+        // helps the common "I forgot the prefix" case.
+        let candidate = raw.contains("://") ? raw : (raw.isEmpty ? raw : "https://" + raw)
+        guard let url = URL(string: candidate),
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else {
             let invalid = NSAlert()
