@@ -19,6 +19,20 @@ enum ReaderTheme: String, CaseIterable, Codable {
     case light, sepia, dark
 }
 
+/// What kind of document is in the active tab — picks the renderer pipeline.
+/// Markdown flows through the WKWebView + markdown-it pipeline; PDF flows
+/// through the native PDFKit pipeline. Derived from the file URL's extension
+/// rather than stored, so a tab's kind always matches its actual file.
+enum DocumentKind: String {
+    case markdown
+    case pdf
+
+    static func kind(for url: URL?) -> DocumentKind {
+        guard let url else { return .markdown }
+        return url.pathExtension.lowercased() == "pdf" ? .pdf : .markdown
+    }
+}
+
 /// Three-stop content-column width. Narrow is the historical default and
 /// the typography-recommended range (~90 chars/line at 18px serif);
 /// Medium and Wide trade reading optimality for using more of the
@@ -259,6 +273,11 @@ final class DocumentStore: ObservableObject {
 
     var hasSelection: Bool { !selectionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
+    /// Current document's renderer kind, derived from the active file URL.
+    /// `ReaderPane` reads this to pick between WKWebView (markdown) and
+    /// PDFView (pdf). Remote URL and clipboard tabs are always markdown.
+    var documentKind: DocumentKind { DocumentKind.kind(for: fileURL) }
+
     private var sidecarURL: URL? {
         guard let u = fileURL else { return nil }
         // Remote (http/https) URLs don't have an adjacent on-disk location
@@ -344,7 +363,8 @@ final class DocumentStore: ObservableObject {
         panel.allowedContentTypes = [
             UTType(filenameExtension: "md") ?? .plainText,
             UTType(filenameExtension: "markdown") ?? .plainText,
-            .plainText
+            .plainText,
+            .pdf
         ]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -361,7 +381,14 @@ final class DocumentStore: ObservableObject {
         }
 
         do {
-            let text = try String(contentsOf: url, encoding: .utf8)
+            // PDFs don't go through the UTF-8 text path — PDFReaderView
+            // renders directly from the file URL. rawText stays empty so
+            // the markdown pipeline (markdown-it, search, highlight, diff)
+            // doesn't try to do anything with the binary PDF bytes.
+            let kind = DocumentKind.kind(for: url)
+            let text: String = (kind == .pdf)
+                ? ""
+                : try String(contentsOf: url, encoding: .utf8)
             // Re-root the file tree only when the new file is outside the current scope.
             // Clicking a file inside a subfolder of the current root must preserve rooting.
             let shouldRebuildTree: Bool
@@ -710,7 +737,7 @@ final class DocumentStore: ObservableObject {
 
     // MARK: - File browser
 
-    static let browsableExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt"]
+    static let browsableExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt", "pdf"]
 
     func refreshFileTree() {
         guard let url = fileURL else { fileTree = nil; return }

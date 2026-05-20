@@ -214,10 +214,26 @@ struct ReaderPane: View {
     var body: some View {
         let c = store.theme.colors
         ZStack(alignment: .top) {
-            WebReaderView()
-                .background(c.background)
+            // Pick the renderer per the active document's kind. Markdown
+            // and remote/clipboard tabs go through WKWebView + markdown-it;
+            // PDFs go through native PDFKit. Each tab type sees a fresh
+            // view instance when SwiftUI rebuilds — there's no shared
+            // state across renderers, which keeps the two pipelines
+            // decoupled.
+            switch store.documentKind {
+            case .markdown:
+                WebReaderView()
+                    .background(c.background)
+            case .pdf:
+                PDFReaderView()
+                    .background(c.background)
+            }
 
-            if store.showSearch {
+            // Mindle's search bar only routes through the markdown
+            // pipeline today. PDF find-integration lands in a later
+            // stage; until then ⌘F on a PDF tab opens an empty search
+            // bar that won't match — hide it to avoid the confusion.
+            if store.showSearch && store.documentKind == .markdown {
                 SearchBar()
                     .padding(.top, 10)
                     .padding(.trailing, 14)
