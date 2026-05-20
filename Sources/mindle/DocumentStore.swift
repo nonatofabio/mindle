@@ -642,26 +642,115 @@ final class DocumentStore: ObservableObject {
         // the result on the floor — the URL is no longer being viewed.
         guard let idx = tabs.firstIndex(where: { $0.id == tabID }) else { return }
 
-        let body: String
         if let error {
-            body = "# Couldn't load\n\n`\(url.absoluteString)`\n\n```\n\(error.localizedDescription)\n```\n"
-        } else if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            body = "# HTTP \(http.statusCode)\n\n`\(url.absoluteString)`\n"
-        } else if let data, let text = String(data: data, encoding: .utf8) {
-            body = text
-        } else {
-            body = "# Couldn't decode as UTF-8\n\n`\(url.absoluteString)`\n"
+            applyTextBody(
+                tabIdx: idx, tabID: tabID,
+                body: "# Couldn't load\n\n`\(url.absoluteString)`\n\n```\n\(error.localizedDescription)\n```\n"
+            )
+            return
+        }
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            applyTextBody(
+                tabIdx: idx, tabID: tabID,
+                body: "# HTTP \(http.statusCode)\n\n`\(url.absoluteString)`\n"
+            )
+            return
+        }
+        guard let data else {
+            applyTextBody(
+                tabIdx: idx, tabID: tabID,
+                body: "# Couldn't load\n\n`\(url.absoluteString)`\n"
+            )
+            return
         }
 
+        // PDF response → swap the tab over to the PDFKit pipeline. We
+        // cache the bytes to disk because PDFView needs a URL, not raw
+        // data; this also gives future sessions something to point at
+        // once URL-PDF sidecar persistence lands in stage 3.
+        let looksLikePDF =
+            (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?
+                .lowercased().hasPrefix("application/pdf") == true
+            || url.pathExtension.lowercased() == "pdf"
+            || data.starts(with: [0x25, 0x50, 0x44, 0x46])   // "%PDF"
+        if looksLikePDF {
+            if let cacheURL = Self.cacheURLForRemotePDF(originalURL: url, data: data) {
+                tabs[idx].fileURL = cacheURL
+                tabs[idx].rawText = ""
+                tabs[idx].lastSyncedText = ""
+                if activeTabID == tabID {
+                    fileURL = cacheURL
+                    rawText = ""
+                    lastSyncedText = ""
+                    resetReaderPrefsToUserDefaults()
+                    loadSidecar()
+                    snapshotActiveTab()
+                }
+                return
+            }
+            // Cache write failed; fall through to the error message path.
+            applyTextBody(
+                tabIdx: idx, tabID: tabID,
+                body: "# Couldn't cache PDF locally\n\n`\(url.absoluteString)`\n"
+            )
+            return
+        }
+
+        if let text = String(data: data, encoding: .utf8) {
+            applyTextBody(tabIdx: idx, tabID: tabID, body: text)
+        } else {
+            applyTextBody(
+                tabIdx: idx, tabID: tabID,
+                body: "# Couldn't decode as UTF-8\n\n`\(url.absoluteString)`\n"
+            )
+        }
+    }
+
+    /// Common tail of `handleURLResponse` for text-bodied responses
+    /// (markdown, plain text, error placeholders). Updates the tab's
+    /// rawText and — if this is the active tab — mirrors into the
+    /// window-scoped @Published vars + reloads the sidecar.
+    @MainActor
+    private func applyTextBody(tabIdx idx: Int, tabID: UUID, body: String) {
         tabs[idx].rawText = body
         tabs[idx].lastSyncedText = body
-        // Only update the live view if the URL tab is still active.
         if activeTabID == tabID {
             rawText = body
             lastSyncedText = body
             resetReaderPrefsToUserDefaults()
             loadSidecar()
             snapshotActiveTab()
+        }
+    }
+
+    /// Write a fetched PDF to `~/Library/Application Support/Mindle/url-pdfs/<urlhash>.pdf`
+    /// and return that URL so the tab can hand it to PDFView. The hash key
+    /// is stable across launches (same as the url-sidecars key), so the
+    /// same source URL re-fetches into the same cache file — handy when
+    /// URL-PDF sidecar persistence lands in stage 3. Skips the write if
+    /// the cache file already exists and the bytes match in length (a
+    /// proxy for "same content"; full equality would re-read the cache
+    /// off disk for nothing).
+    private static func cacheURLForRemotePDF(originalURL: URL, data: Data) -> URL? {
+        guard let support = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else { return nil }
+        let dir = support
+            .appendingPathComponent("Mindle", isDirectory: true)
+            .appendingPathComponent("url-pdfs", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let cacheURL = dir.appendingPathComponent("\(Self.urlKey(for: originalURL)).pdf")
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: cacheURL.path),
+           let size = attrs[.size] as? Int,
+           size == data.count {
+            return cacheURL
+        }
+        do {
+            try data.write(to: cacheURL, options: .atomic)
+            return cacheURL
+        } catch {
+            return nil
         }
     }
 
