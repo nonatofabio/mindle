@@ -437,6 +437,15 @@ struct MindleCommands: Commands {
             }
             .disabled(store == nil)
 
+            // Resets a PDF tab's zoom back to fit-width after the user has
+            // pinched or stepped via ⌘+/⌘-. No-op on Markdown tabs;
+            // disabled so the shortcut doesn't fire pointlessly.
+            Button("Fit Width") {
+                store?.pdfFitWidthRequestedAt = Date()
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            .disabled(store == nil || store?.documentKind != .pdf)
+
             Button((store?.bionicText ?? false) ? "Disable Bionic Text" : "Enable Bionic Text") {
                 store?.bionicText.toggle()
             }

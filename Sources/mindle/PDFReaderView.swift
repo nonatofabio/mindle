@@ -34,7 +34,6 @@ struct PDFReaderView: NSViewRepresentable {
         view.postsFrameChangedNotifications = true
         context.coordinator.view = view
         loadDocumentIfNeeded(into: view, context: context)
-        view.fontScale = CGFloat(store.fontScale)
         view.applyFitWidth()
         return view
     }
@@ -44,12 +43,67 @@ struct PDFReaderView: NSViewRepresentable {
         if view.backgroundColor != bg { view.backgroundColor = bg }
 
         let scale = CGFloat(store.fontScale)
-        if abs(view.fontScale - scale) > 0.001 {
-            view.fontScale = scale
-            view.applyFitWidth()
+        if abs(context.coordinator.lastFontScale - scale) > 0.001 {
+            if context.coordinator.lastFontScale > 0 {
+                if scale > context.coordinator.lastFontScale {
+                    view.zoomIn(nil)
+                } else if scale < context.coordinator.lastFontScale {
+                    view.zoomOut(nil)
+                }
+            }
+            context.coordinator.lastFontScale = scale
+        }
+
+        if let t = store.pdfFitWidthRequestedAt,
+           t != context.coordinator.lastFitWidthAt {
+            context.coordinator.lastFitWidthAt = t
+            view.resetToFitWidth()
         }
 
         loadDocumentIfNeeded(into: view, context: context)
+
+        // Highlight / Note request handlers — capture the live PDFSelection,
+        // build the anchor, and hand off to the store. The store creates
+        // the Annotation, the next updateNSView tick re-syncs overlays.
+        if let t = store.highlightRequestedAt,
+           t != context.coordinator.lastHighlightAt {
+            context.coordinator.lastHighlightAt = t
+            if let anchor = captureCurrentSelection(view: view) {
+                store.applyHighlight(
+                    text: anchor.text,
+                    prefix: anchor.prefix,
+                    suffix: anchor.suffix,
+                    pageIndex: anchor.pageIndex,
+                    pageTextHash: anchor.pageTextHash
+                )
+            } else {
+                NSSound.beep()
+            }
+        }
+
+        if let t = store.noteRequestedAt,
+           t != context.coordinator.lastNoteAt {
+            context.coordinator.lastNoteAt = t
+            if let anchor = captureCurrentSelection(view: view) {
+                store.applyNote(
+                    text: anchor.text,
+                    prefix: anchor.prefix,
+                    suffix: anchor.suffix,
+                    pageIndex: anchor.pageIndex,
+                    pageTextHash: anchor.pageTextHash
+                )
+            } else {
+                NSSound.beep()
+            }
+        }
+
+        // Re-sync our highlight overlays whenever the annotation set
+        // changes. Cheap when nothing changed (skipped by the array
+        // equality check below).
+        if store.annotations != context.coordinator.lastAnnotations {
+            context.coordinator.lastAnnotations = store.annotations
+            syncHighlightOverlays(view: view)
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -76,39 +130,197 @@ struct PDFReaderView: NSViewRepresentable {
     final class Coordinator {
         weak var view: FitWidthPDFView?
         var lastLoadedURL: URL?
+        var lastFontScale: CGFloat = 0
+        var lastFitWidthAt: Date?
+        var lastHighlightAt: Date?
+        var lastNoteAt: Date?
+        var lastAnnotations: [Annotation] = []
+    }
+
+    // MARK: - Selection capture
+
+    /// Read the current PDFSelection from the view and translate it into
+    /// Mindle's text+prefix+suffix anchor format, augmented with the page
+    /// index and a hash of the page's full extracted text (for drift
+    /// detection on reopen).
+    ///
+    /// Anchor offsets use a literal `range(of:)` search on the page text.
+    /// PDF column layouts can introduce line breaks inside the selection
+    /// that don't appear in PDFPage.string the same way — when that
+    /// happens, this returns nil and the caller beeps. Stage 3 will add
+    /// a whitespace-normalised fallback search; for v3.0-rc1, the
+    /// arxiv-style single-column case has to work first.
+    private func captureCurrentSelection(view: FitWidthPDFView)
+        -> (text: String, prefix: String, suffix: String, pageIndex: Int, pageTextHash: String)?
+    {
+        guard let selection = view.currentSelection,
+              let firstPage = selection.pages.first,
+              let pageText = firstPage.string,
+              let doc = view.document else { return nil }
+        let raw = selection.string ?? ""
+        let selectedText = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !selectedText.isEmpty else { return nil }
+        guard let range = pageText.range(of: selectedText) else { return nil }
+
+        // Take up to 32 chars before / after the matched span. The
+        // existing anchor convention on Markdown uses ~32 chars each
+        // side; matching it keeps re-anchor heuristics cross-format.
+        let prefixStartOffset = max(0, pageText.distance(from: pageText.startIndex, to: range.lowerBound) - 32)
+        let suffixEndOffset = min(
+            pageText.count,
+            pageText.distance(from: pageText.startIndex, to: range.upperBound) + 32
+        )
+        let prefixStart = pageText.index(pageText.startIndex, offsetBy: prefixStartOffset)
+        let suffixEnd = pageText.index(pageText.startIndex, offsetBy: suffixEndOffset)
+        let prefix = String(pageText[prefixStart..<range.lowerBound])
+        let suffix = String(pageText[range.upperBound..<suffixEnd])
+
+        let pageIndex = doc.index(for: firstPage)
+        let pageTextHash = DocumentStore.contentHash(pageText)
+        return (selectedText, prefix, suffix, pageIndex, pageTextHash)
+    }
+
+    // MARK: - Highlight overlays
+
+    /// Sync visible highlight rectangles on the PDF with the current
+    /// `store.annotations`. Removes any prior Mindle overlays (identified
+    /// by the `MindleHighlightAnnotation` subclass) and re-adds one per
+    /// active annotation. PDFKit-native annotations baked into the PDF
+    /// file itself are left alone — we identify ours by subclass, not by
+    /// type.
+    @MainActor
+    private func syncHighlightOverlays(view: FitWidthPDFView) {
+        guard let doc = view.document else { return }
+        for pageIdx in 0..<doc.pageCount {
+            guard let page = doc.page(at: pageIdx) else { continue }
+            for existing in page.annotations where existing is MindleHighlightAnnotation {
+                page.removeAnnotation(existing)
+            }
+        }
+        for ann in store.annotations {
+            guard let pageIdx = ann.pageIndex,
+                  pageIdx >= 0, pageIdx < doc.pageCount,
+                  let page = doc.page(at: pageIdx),
+                  let pageText = page.string,
+                  let range = pageText.range(of: ann.text) else { continue }
+            let nsRange = NSRange(range, in: pageText)
+            guard let sel = page.selection(for: nsRange) else { continue }
+            let color = highlightColor(for: ann)
+            for lineSel in sel.selectionsByLine() {
+                let bounds = lineSel.bounds(for: page)
+                guard !bounds.isEmpty else { continue }
+                let overlay = MindleHighlightAnnotation(
+                    bounds: bounds,
+                    forType: .highlight,
+                    withProperties: nil
+                )
+                overlay.color = color
+                page.addAnnotation(overlay)
+            }
+        }
+    }
+
+    /// Pick the highlight color for a PDF annotation. Agents get the
+    /// theme's muted color (distinct from human highlights), humans get
+    /// their collaborator-registry color when one is set, otherwise the
+    /// theme's highlight color. Mirrors the Markdown `authorColor`
+    /// helper philosophy.
+    @MainActor
+    private func highlightColor(for ann: Annotation) -> NSColor {
+        let c = store.theme.colors
+        if ann.author == "agent" {
+            return NSColor(c.muted).withAlphaComponent(0.4)
+        }
+        if let alias = ann.author,
+           alias != "user",
+           let hex = store.collaborators[alias]?.color {
+            return NSColor(Color(hex: hex)).withAlphaComponent(0.4)
+        }
+        return NSColor(c.highlight).withAlphaComponent(0.4)
     }
 }
 
-/// PDFView subclass that keeps pages filling the available width
-/// regardless of window size or document. Reads `fontScale` as a
-/// multiplier on top of the base fit-width factor so Mindle's
-/// ⌘+ / ⌘- shortcut still works as a relative zoom (≈ font scale on
-/// Markdown tabs).
+/// PDFAnnotation subclass used solely as a marker — lets `syncHighlightOverlays`
+/// distinguish Mindle's overlays from any annotations baked into the PDF
+/// file itself, so we can sweep ours without touching theirs.
+final class MindleHighlightAnnotation: PDFAnnotation {}
+
+/// PDFView subclass that keeps pages filling the available width on
+/// window resize *unless* the user has manually zoomed. Without the
+/// override flag the user's pinch/⌘+ would be reverted every time the
+/// view re-laid out (and we lay out a lot).
+///
+/// `fontScale` is no longer used as a zoom multiplier — PDF zoom now
+/// lives entirely in PDFKit's scaleFactor, modified by the user
+/// directly. Mindle's ⌘+ / ⌘- on PDF tabs routes through
+/// `view.zoomIn() / view.zoomOut()` (the native PDFKit step) rather
+/// than the Markdown-only fontScale path.
 final class FitWidthPDFView: PDFView {
-    var fontScale: CGFloat = 1.0
+    /// Set to true when the *user* (not Mindle) has driven scaleFactor —
+    /// pinch-to-zoom, the native ⌘+/⌘- on PDFView, or the explicit
+    /// menu zoom actions we wire below. While set, `applyFitWidth()` is
+    /// a no-op so the user's zoom sticks across window resizes. The
+    /// "Fit Width" menu action clears it.
+    private(set) var userOverridesFit: Bool = false
+    private var applyingFitWidth: Bool = false
     /// Horizontal padding inside the view, in points. Leaves a little
     /// breathing room around the page so it doesn't hit the scrollbar
     /// and doesn't kiss the sidebar's left edge.
     private let horizontalInset: CGFloat = 24
 
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wireScaleObserver()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wireScaleObserver()
+    }
+
+    private func wireScaleObserver() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(scaleChanged),
+            name: .PDFViewScaleChanged,
+            object: self
+        )
+    }
+
+    @objc private func scaleChanged() {
+        if !applyingFitWidth {
+            userOverridesFit = true
+        }
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        applyFitWidth()
+        if !userOverridesFit {
+            applyFitWidth()
+        }
     }
 
     /// Recompute `scaleFactor` so the first page's media-box width fills
-    /// the visible area (minus padding), multiplied by Mindle's font
-    /// scale. Idempotent — bails on a sub-percent change so it doesn't
-    /// thrash when called from both `updateNSView` and frame-resize.
+    /// the visible area (minus padding). Idempotent — bails on a
+    /// sub-percent change so it doesn't thrash when called from both
+    /// `updateNSView` and frame-resize.
     func applyFitWidth() {
         guard let doc = document, doc.pageCount > 0,
               let page = doc.page(at: 0) else { return }
         let pageWidth = page.bounds(for: .mediaBox).width
         let available = max(bounds.width - horizontalInset * 2, 1)
         guard pageWidth > 0 else { return }
-        let target = (available / pageWidth) * fontScale
+        let target = available / pageWidth
         if abs(scaleFactor - target) > 0.005 {
+            applyingFitWidth = true
             scaleFactor = target
+            applyingFitWidth = false
         }
+    }
+
+    /// Menu-action target: drop the user-override flag and re-fit.
+    func resetToFitWidth() {
+        userOverridesFit = false
+        applyFitWidth()
     }
 }

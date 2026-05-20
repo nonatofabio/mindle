@@ -109,6 +109,18 @@ struct Annotation: Identifiable, Codable, Equatable {
     /// Optional reactions on the annotation as a whole. Replies have
     /// their own reactions field on AnnotationMessage.
     var reactions: [AnnotationReaction]?
+
+    // PDF-specific anchor extensions (nil on Markdown annotations).
+    /// 0-based index of the PDF page this annotation is anchored on.
+    /// Speeds re-anchor on reopen — search the stored page first and
+    /// fall back to a broader cross-page scan only if it misses.
+    var pageIndex: Int?
+    /// FNV-1a hash of the full PDFPage.string at create time. Used to
+    /// detect drift: if the same page hashes differently on reopen
+    /// (extraction varied, document re-saved), the prefix/suffix
+    /// anchor may have moved — UI can flag the annotation as
+    /// "possibly orphaned" instead of silently misplacing the highlight.
+    var pageTextHash: String?
 }
 
 enum AnnotationStatus: String, Codable {
@@ -227,6 +239,14 @@ final class DocumentStore: ObservableObject {
     @Published private(set) var selectionText: String = ""
     private var selectionPrefix: String = ""
     private var selectionSuffix: String = ""
+    /// PDF anchor metadata for the most recent applyHighlight/applyNote
+    /// call. Nil for Markdown captures; populated when PDFReaderView
+    /// hands off a PDF selection. Consumed (and cleared) by the next
+    /// `highlightSelection` / `addNoteToSelection` invocation so it
+    /// can't leak into a subsequent Markdown selection on the same
+    /// window.
+    private var pendingPageIndex: Int?
+    private var pendingPageTextHash: String?
 
     @Published var focusedAnnotation: UUID? = nil
     /// When the user creates an annotation via ⌘⇧N, the annotation appears
@@ -258,6 +278,10 @@ final class DocumentStore: ObservableObject {
     // applyHighlight / applyNote with the fresh values.
     @Published var highlightRequestedAt: Date? = nil
     @Published var noteRequestedAt: Date? = nil
+    /// Bumped by the View → Fit Width menu action (⌘0). PDFReaderView
+    /// observes this to reset its scale factor to fit-width after the
+    /// user has manually zoomed. No-op on Markdown tabs.
+    @Published var pdfFitWidthRequestedAt: Date? = nil
 
     // FSEvents-based watcher on the active file. Replaced whenever the
     // active fileURL changes (open / tab activate / close).
@@ -334,9 +358,10 @@ final class DocumentStore: ObservableObject {
     }
 
     /// FNV-1a 64-bit hash of an arbitrary UTF-8 string. Used for content
-    /// hashing of pasted clipboard text — stable across launches, fits in
-    /// a filename, collision-resistant for human-scale paste volumes.
-    private static func contentHash(_ text: String) -> String {
+    /// hashing of pasted clipboard text and PDF page-text fingerprints —
+    /// stable across launches, fits in a filename, collision-resistant
+    /// for human-scale paste / page volumes.
+    static func contentHash(_ text: String) -> String {
         var h: UInt64 = 14695981039346656037
         for byte in text.utf8 {
             h ^= UInt64(byte)
@@ -906,19 +931,35 @@ final class DocumentStore: ObservableObject {
     /// Called by WebReaderView once the JS round-trip returns the live
     /// selection. Overwrites the cached selection with the fresh capture,
     /// then runs the standard highlight/note path.
-    func applyHighlight(text: String, prefix: String, suffix: String) {
+    func applyHighlight(
+        text: String,
+        prefix: String,
+        suffix: String,
+        pageIndex: Int? = nil,
+        pageTextHash: String? = nil
+    ) {
         DebugConsole.shared.log("HIGHLIGHT: '\(text.prefix(30))'")
         selectionText = text
         selectionPrefix = prefix
         selectionSuffix = suffix
+        pendingPageIndex = pageIndex
+        pendingPageTextHash = pageTextHash
         highlightSelection()
     }
 
-    func applyNote(text: String, prefix: String, suffix: String) {
+    func applyNote(
+        text: String,
+        prefix: String,
+        suffix: String,
+        pageIndex: Int? = nil,
+        pageTextHash: String? = nil
+    ) {
         DebugConsole.shared.log("NOTE: '\(text.prefix(30))'")
         selectionText = text
         selectionPrefix = prefix
         selectionSuffix = suffix
+        pendingPageIndex = pageIndex
+        pendingPageTextHash = pageTextHash
         addNoteToSelection()
     }
 
@@ -941,13 +982,17 @@ final class DocumentStore: ObservableObject {
                 )
             }
         } else {
-            let ann = Annotation(
+            var ann = Annotation(
                 text: selectionText,
                 prefix: selectionPrefix,
                 suffix: selectionSuffix,
                 note: "",
                 author: IdentityManager.shared.alias
             )
+            ann.pageIndex = pendingPageIndex
+            ann.pageTextHash = pendingPageTextHash
+            pendingPageIndex = nil
+            pendingPageTextHash = nil
             annotations.append(ann)
             if let url = fileURL {
                 AnnotationEventLog.shared.append(
@@ -971,13 +1016,17 @@ final class DocumentStore: ObservableObject {
             editingAnnotationID = existing.id
             focusedAnnotation = existing.id
         } else {
-            let ann = Annotation(
+            var ann = Annotation(
                 text: selectionText,
                 prefix: selectionPrefix,
                 suffix: selectionSuffix,
                 note: "",
                 author: IdentityManager.shared.alias
             )
+            ann.pageIndex = pendingPageIndex
+            ann.pageTextHash = pendingPageTextHash
+            pendingPageIndex = nil
+            pendingPageTextHash = nil
             annotations.append(ann)
             // Defer the `created` event until the user finishes typing
             // the note — see editingAnnotationID's didSet. Emitting now
