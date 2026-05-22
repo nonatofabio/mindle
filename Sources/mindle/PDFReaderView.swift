@@ -35,7 +35,35 @@ struct PDFReaderView: NSViewRepresentable {
         context.coordinator.view = view
         loadDocumentIfNeeded(into: view, context: context)
         view.applyFitWidth()
+
+        // Bridge PDFView's live selection into the store so the toolbar's
+        // highlight / note buttons (which gate on `store.hasSelection`)
+        // enable as soon as the user drags a selection. Without this hook,
+        // hasSelection only ever flips via the JS path used by Markdown
+        // tabs — so on a PDF tab the toolbar buttons stay greyed out and
+        // the user has to fall back to ⌘⇧H or the sidebar + button.
+        // prefix/suffix stay empty here — the highlight pipeline on PDFs
+        // does its own anchor extraction via captureCurrentSelection,
+        // reading PDFPage.string directly.
+        let store = self.store
+        context.coordinator.selectionObserver = NotificationCenter.default.addObserver(
+            forName: .PDFViewSelectionChanged,
+            object: view,
+            queue: .main
+        ) { [weak store] note in
+            guard let store, let pv = note.object as? PDFView else { return }
+            let text = pv.currentSelection?.string?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            store.updateSelection(text: text, prefix: "", suffix: "")
+        }
         return view
+    }
+
+    static func dismantleNSView(_ nsView: FitWidthPDFView, coordinator: Coordinator) {
+        if let token = coordinator.selectionObserver {
+            NotificationCenter.default.removeObserver(token)
+            coordinator.selectionObserver = nil
+        }
     }
 
     func updateNSView(_ view: FitWidthPDFView, context: Context) {
@@ -135,6 +163,10 @@ struct PDFReaderView: NSViewRepresentable {
         var lastHighlightAt: Date?
         var lastNoteAt: Date?
         var lastAnnotations: [Annotation] = []
+        /// NotificationCenter token for the PDFView selection bridge.
+        /// Removed in dismantleNSView so we don't leak observers across
+        /// SwiftUI's recreation of the representable.
+        var selectionObserver: NSObjectProtocol?
     }
 
     // MARK: - Selection capture
