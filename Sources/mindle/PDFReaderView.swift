@@ -140,6 +140,42 @@ struct PDFReaderView: NSViewRepresentable {
             context.coordinator.lastAnnotations = store.annotations
             syncHighlightOverlays(view: view)
         }
+
+        // Sidebar's "jump to this passage" button sets focusedAnnotation.
+        // WebReaderView observes it for Markdown; on PDF we need to
+        // navigate the PDFView to the right page and, when we can resolve
+        // a PDFSelection, scroll the selection's rect into view. Same
+        // single-change trigger pattern as the other signals on this
+        // coordinator.
+        if let focusID = store.focusedAnnotation,
+           focusID != context.coordinator.lastFocusID {
+            context.coordinator.lastFocusID = focusID
+            scrollTo(annotationID: focusID, view: view)
+        }
+    }
+
+    /// Find the annotation by id, navigate the PDFView to its page, and
+    /// scroll its first line into view if the anchor still resolves.
+    /// Falls back to page-level navigation when re-anchor fails.
+    @MainActor
+    private func scrollTo(annotationID id: UUID, view: FitWidthPDFView) {
+        guard let ann = store.annotations.first(where: { $0.id == id }),
+              let pageIdx = ann.pageIndex,
+              let doc = view.document,
+              pageIdx >= 0, pageIdx < doc.pageCount,
+              let page = doc.page(at: pageIdx) else { return }
+        // Prefer scrolling to the exact selection rect when the anchor
+        // re-resolves cleanly; otherwise land on the page so the user
+        // at least sees the right region.
+        if let pageText = page.string,
+           let range = Self.findAnchorRange(for: ann, in: pageText) {
+            let nsRange = NSRange(range, in: pageText)
+            if let sel = page.selection(for: nsRange) {
+                view.go(to: sel)
+                return
+            }
+        }
+        view.go(to: page)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -171,6 +207,7 @@ struct PDFReaderView: NSViewRepresentable {
         var lastHighlightAt: Date?
         var lastNoteAt: Date?
         var lastAnnotations: [Annotation] = []
+        var lastFocusID: UUID?
         /// NotificationCenter token for the PDFView selection bridge.
         /// Removed in dismantleNSView so we don't leak observers across
         /// SwiftUI's recreation of the representable.

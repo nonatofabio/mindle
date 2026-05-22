@@ -491,8 +491,17 @@ final class DocumentStore: ObservableObject {
         // FSEvents only meaningfully watches local files. Remote URL tabs
         // don't get a watcher — refreshing means re-opening from the menu.
         guard url.isFileURL else { return }
-        fileWatcher = FileWatcher(url: url) { [weak self] in
-            self?.reloadFromDisk()
+        // Body watcher is for live-reload of Markdown source via
+        // `String(contentsOf:)`. On a PDF tab those bytes aren't UTF-8;
+        // the read fails and `reloadFromDisk` beeps every time PDFKit
+        // touches the file. PDF tabs render directly from the URL via
+        // PDFView, so they need no body watcher at all. Sidecar watcher
+        // still applies — that's how teammates' annotation edits flow
+        // in.
+        if DocumentKind.kind(for: url) != .pdf {
+            fileWatcher = FileWatcher(url: url) { [weak self] in
+                self?.reloadFromDisk()
+            }
         }
         if let sidecar = sidecarURL, sidecar.isFileURL {
             sidecarWatcher = FileWatcher(url: sidecar) { [weak self] in
