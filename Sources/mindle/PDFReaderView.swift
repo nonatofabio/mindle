@@ -212,6 +212,67 @@ struct PDFReaderView: NSViewRepresentable {
         return (selectedText, prefix, suffix, pageIndex, pageTextHash)
     }
 
+    // MARK: - Anchor lookup
+
+    /// Re-anchor an existing PDF annotation against the current
+    /// extracted page text. Two passes:
+    ///
+    /// 1. **Literal `range(of:)`** — the happy path. Works whenever the
+    ///    page extracts identically to when the annotation was captured.
+    /// 2. **Flexible-whitespace regex** — when the literal misses we
+    ///    rebuild the target as a pattern that treats each whitespace
+    ///    run as `\s+`, so the same selection found across a column wrap
+    ///    or hyphenation boundary still matches. Skipped when
+    ///    `pageTextHash` matches the stored value (extraction is
+    ///    identical → literal already failed for some other reason, no
+    ///    point spending the regex compile).
+    ///
+    /// Returns nil when neither pass finds the anchor. The caller (the
+    /// overlay-sync loop) simply skips drawing in that case — the
+    /// annotation remains in the sidebar but has no visible highlight on
+    /// the page until a later doc edit puts the text back. Stage 6 will
+    /// add an "orphaned" UI cue.
+    static func findAnchorRange(for ann: Annotation, in pageText: String) -> Range<String.Index>? {
+        if let r = pageText.range(of: ann.text) {
+            return r
+        }
+        if let storedHash = ann.pageTextHash,
+           storedHash == DocumentStore.contentHash(pageText) {
+            // Extraction is byte-identical to creation time, so the
+            // literal failure isn't a whitespace artifact — the anchor
+            // really has drifted. Don't paper over it with the regex.
+            return nil
+        }
+        return flexibleWhitespaceRange(target: ann.text, in: pageText)
+    }
+
+    private static func flexibleWhitespaceRange(target: String, in pageText: String) -> Range<String.Index>? {
+        guard !target.isEmpty else { return nil }
+        var pattern = ""
+        var inWhitespace = false
+        for ch in target {
+            if ch.isWhitespace {
+                if !inWhitespace {
+                    pattern += "\\s+"
+                    inWhitespace = true
+                }
+            } else {
+                inWhitespace = false
+                pattern += NSRegularExpression.escapedPattern(for: String(ch))
+            }
+        }
+        guard let re = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return nil
+        }
+        let ns = pageText as NSString
+        guard let match = re.firstMatch(
+            in: pageText,
+            options: [],
+            range: NSRange(location: 0, length: ns.length)
+        ) else { return nil }
+        return Range(match.range, in: pageText)
+    }
+
     // MARK: - Highlight overlays
 
     /// Sync visible highlight rectangles on the PDF with the current
@@ -234,7 +295,7 @@ struct PDFReaderView: NSViewRepresentable {
                   pageIdx >= 0, pageIdx < doc.pageCount,
                   let page = doc.page(at: pageIdx),
                   let pageText = page.string,
-                  let range = pageText.range(of: ann.text) else { continue }
+                  let range = Self.findAnchorRange(for: ann, in: pageText) else { continue }
             let nsRange = NSRange(range, in: pageText)
             guard let sel = page.selection(for: nsRange) else { continue }
             let color = highlightColor(for: ann)
