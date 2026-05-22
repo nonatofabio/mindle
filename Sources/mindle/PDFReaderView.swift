@@ -51,10 +51,18 @@ struct PDFReaderView: NSViewRepresentable {
             object: view,
             queue: .main
         ) { [weak store] note in
-            guard let store, let pv = note.object as? PDFView else { return }
-            let text = pv.currentSelection?.string?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            store.updateSelection(text: text, prefix: "", suffix: "")
+            // NotificationCenter runs the closure on the queue we passed
+            // (.main), but the compiler treats it as nonisolated and the
+            // call into @MainActor DocumentStore would otherwise be an
+            // implicit async hop. assumeIsolated tells the runtime we're
+            // already on the main actor — zero overhead, fails fast in
+            // the impossible case that the queue ever changes.
+            MainActor.assumeIsolated {
+                guard let store, let pv = note.object as? PDFView else { return }
+                let text = pv.currentSelection?.string?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                store.updateSelection(text: text, prefix: "", suffix: "")
+            }
         }
         return view
     }
