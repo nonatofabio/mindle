@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import PDFKit
 
 extension URL {
     /// Canonical filesystem path with symlinks fully resolved. The match
@@ -1183,7 +1184,7 @@ final class DocumentStore: ObservableObject {
         note: String,
         clientID: String? = nil
     ) -> UUID? {
-        let ann = Annotation(
+        var ann = Annotation(
             text: text,
             prefix: prefix,
             suffix: suffix,
@@ -1195,6 +1196,7 @@ final class DocumentStore: ObservableObject {
         if let active = activeTabID,
            let i = tabs.firstIndex(where: { $0.id == active }),
            tabs[i].fileURL.canonicalPath == canonical {
+            applyPDFAnchorIfApplicable(to: &ann, tabFileURL: tabs[i].fileURL)
             annotations.append(ann)
             showAnnotations = true
             saveSidecar()
@@ -1208,6 +1210,7 @@ final class DocumentStore: ObservableObject {
             return ann.id
         }
         if let i = tabs.firstIndex(where: { $0.fileURL.canonicalPath == canonical }) {
+            applyPDFAnchorIfApplicable(to: &ann, tabFileURL: tabs[i].fileURL)
             tabs[i].annotations.append(ann)
             saveSidecar(forTab: tabs[i])
             AnnotationEventLog.shared.append(
@@ -1218,6 +1221,48 @@ final class DocumentStore: ObservableObject {
                 clientID: clientID
             )
             return ann.id
+        }
+        return nil
+    }
+
+    /// Mutates an agent-authored annotation in-place to stamp `pageIndex`
+    /// and `pageTextHash` when the host tab is a PDF and the anchor text
+    /// resolves on one of its pages. Markdown tabs no-op — there's no
+    /// page concept; the JS pipeline finds anchors at render time. PDFs
+    /// need the page index baked in at creation so the overlay
+    /// pipeline knows where to draw.
+    ///
+    /// Resolution uses the same two-pass match (literal → flex-whitespace)
+    /// that re-anchor on reopen uses, sharing the
+    /// `PDFReaderView.findAnchorRange` helper. First page that matches
+    /// wins — when the same text appears on multiple pages, the agent
+    /// can constrain by supplying a more specific anchor. (Prefix/suffix
+    /// disambiguation across pages is a stage-6 polish.)
+    private func applyPDFAnchorIfApplicable(to ann: inout Annotation, tabFileURL: URL) {
+        guard DocumentKind.kind(for: tabFileURL) == .pdf,
+              let resolved = resolvePDFAnchor(text: ann.text, fileURL: tabFileURL) else {
+            return
+        }
+        ann.pageIndex = resolved.pageIndex
+        ann.pageTextHash = resolved.pageTextHash
+    }
+
+    /// Open the PDF at `fileURL` and scan its pages for the first one
+    /// whose extracted text contains `text` (literal first, flex-
+    /// whitespace fallback). Returns the page index plus a hash of that
+    /// page's text for later drift detection on reopen. Nil when nothing
+    /// matches — the annotation still gets created without an overlay,
+    /// so the agent's note is visible in the sidebar even if the anchor
+    /// can't be drawn.
+    private func resolvePDFAnchor(text: String, fileURL: URL) -> (pageIndex: Int, pageTextHash: String)? {
+        guard let doc = PDFDocument(url: fileURL) else { return nil }
+        let probe = Annotation(text: text, prefix: "", suffix: "", note: "")
+        for pageIdx in 0..<doc.pageCount {
+            guard let page = doc.page(at: pageIdx),
+                  let pageText = page.string else { continue }
+            if PDFReaderView.findAnchorRange(for: probe, in: pageText) != nil {
+                return (pageIdx, Self.contentHash(pageText))
+            }
         }
         return nil
     }

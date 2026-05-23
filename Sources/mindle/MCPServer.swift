@@ -425,6 +425,14 @@ final class MCPServer {
             "author": ann.author ?? "user",
             "createdAt": iso.string(from: ann.createdAt)
         ]
+        // PDF-only: 0-based page the annotation is anchored on. Omitted
+        // on Markdown annotations (no page concept) and on PDF
+        // annotations whose anchor didn't resolve at create time (the
+        // agent can use the missing field as a signal to retry with a
+        // tighter anchor).
+        if let pageIndex = ann.pageIndex {
+            payload["pageIndex"] = pageIndex
+        }
         if let reactions = ann.reactions, !reactions.isEmpty {
             payload["reactions"] = encodeReactions(reactions, iso: iso)
         }

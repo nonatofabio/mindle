@@ -297,6 +297,14 @@ struct MindleMCP {
                     let authorTag = author == "agent" ? " (agent-authored)" : ""
                     lines.append("\(i + 1). [id: \(id)]\(authorTag)")
                     lines.append("   Selected: \(text.replacingOccurrences(of: "\n", with: " "))")
+                    // PDF: surface the 1-based page number so the agent
+                    // can map annotations to physical layout. Omitted on
+                    // Markdown annotations (no page concept) and on PDF
+                    // annotations whose anchor didn't resolve at create
+                    // time — the absence is itself a signal.
+                    if let pageIdx = ann["pageIndex"] as? Int {
+                        lines.append("   Page: \(pageIdx + 1)")
+                    }
                     if !note.isEmpty {
                         lines.append("   Note: \(note)")
                     }
