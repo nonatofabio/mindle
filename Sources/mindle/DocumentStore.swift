@@ -24,6 +24,17 @@ enum ReaderTheme: String, CaseIterable, Codable {
 /// Markdown flows through the WKWebView + markdown-it pipeline; PDF flows
 /// through the native PDFKit pipeline. Derived from the file URL's extension
 /// rather than stored, so a tab's kind always matches its actual file.
+/// Coarse PDF-load health. Surfaced in the reader pane as a banner so the
+/// user understands why annotation isn't working when it isn't, instead
+/// of staring at a silent blank page (locked) or a paper that won't
+/// highlight (scanned without an OCR layer).
+enum PDFTabStatus: Equatable {
+    case ok
+    case locked
+    case noExtractableText
+    case unloadable
+}
+
 enum DocumentKind: String {
     case markdown
     case pdf
@@ -154,6 +165,14 @@ struct DocumentTab: Identifiable, Equatable {
     /// switch-out and restored on switch-in so a window with multiple
     /// docs open shows each document's own author colors/aliases.
     var collaborators: [String: DocumentStore.SidecarCollaborator] = [:]
+    /// Original URL for tabs whose `fileURL` is a local cache copy —
+    /// today only set on URL-fetched PDFs, where `fileURL` points at
+    /// `~/Library/Application Support/Mindle/url-pdfs/<hash>.pdf` and
+    /// this carries the http(s) URL the user actually opened. Used for
+    /// the tab title (`<hash>.pdf` is unreadable) and for the openURL
+    /// dedup check (so re-opening the same URL re-activates the tab
+    /// instead of fetching again).
+    var sourceURL: URL? = nil
 }
 
 @MainActor
@@ -174,6 +193,11 @@ final class DocumentStore: ObservableObject {
     @Published var readingWidth: ReadingWidth = DocumentStore.persistedReadingWidth()
     @Published var readingFont: ReadingFont = DocumentStore.persistedReadingFont()
     @Published var bionicText: Bool = false
+    /// Status of the active PDF tab (or `.ok` for any non-PDF tab).
+    /// Set by `PDFReaderView` after `PDFDocument(url:)` resolves; reset
+    /// to `.ok` whenever we transition to a Markdown tab so the banner
+    /// doesn't leak across switches.
+    @Published var pdfStatus: PDFTabStatus = .ok
 
     /// UserDefaults keys for the user-level (cross-document) default of
     /// each reader preference. Sidecar still wins per-doc if it carries
@@ -574,7 +598,12 @@ final class DocumentStore: ObservableObject {
     /// Open an http(s) URL: fetch the body off-main and open it as a tab
     /// keyed on the URL. Already-open URLs activate instead of refetching.
     func openURL(_ url: URL) {
-        if let existing = tabs.first(where: { $0.fileURL == url }) {
+        // Check both fileURL (markdown URLs whose tab keeps the http URL)
+        // and sourceURL (PDFs whose fileURL was swapped to a cache path
+        // by handleURLResponse but whose sourceURL preserves the original).
+        // Without the sourceURL check, re-opening the same PDF URL after
+        // it cached would create a duplicate tab.
+        if let existing = tabs.first(where: { $0.fileURL == url || $0.sourceURL == url }) {
             activate(tabID: existing.id)
             return
         }
@@ -716,6 +745,7 @@ final class DocumentStore: ObservableObject {
         if looksLikePDF {
             if let cacheURL = Self.cacheURLForRemotePDF(originalURL: url, data: data) {
                 tabs[idx].fileURL = cacheURL
+                tabs[idx].sourceURL = url
                 tabs[idx].rawText = ""
                 tabs[idx].lastSyncedText = ""
                 if activeTabID == tabID {
@@ -857,6 +887,11 @@ final class DocumentStore: ObservableObject {
         lastSyncedText = tab.lastSyncedText
         annotations = tab.annotations
         collaborators = tab.collaborators
+        // Reset PDF status — PDFReaderView re-publishes the right value
+        // for PDF tabs once the document re-loads; Markdown tabs stay
+        // at .ok so the banner doesn't leak from a previously active
+        // PDF tab.
+        pdfStatus = .ok
         closeSearch()
         focusedAnnotation = nil
         editingAnnotationID = nil
@@ -1704,7 +1739,15 @@ final class DocumentStore: ObservableObject {
         out.append("")
 
         for ann in annotations {
-            out.append(ann.note.isEmpty ? "### Highlight" : "### Note")
+            var heading = ann.note.isEmpty ? "### Highlight" : "### Note"
+            // PDF: surface the page so a printed export tells the reader
+            // where the passage lived in the original document. 1-based
+            // for human readability, matches the page chrome PDFView
+            // shows on screen.
+            if let pageIndex = ann.pageIndex {
+                heading += " · Page \(pageIndex + 1)"
+            }
+            out.append(heading)
             out.append("")
             let quoted = ann.text
                 .split(separator: "\n", omittingEmptySubsequences: false)

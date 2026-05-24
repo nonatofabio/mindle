@@ -180,6 +180,35 @@ struct PDFReaderView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    /// Inspect the freshly loaded PDFDocument and surface a banner-worthy
+    /// status to the store. `.locked` for password-protected docs (PDFView
+    /// renders blank pages and selection does nothing). `.noExtractableText`
+    /// for scanned PDFs with no OCR layer — the image renders fine, the
+    /// user just can't highlight anything. `.ok` otherwise; the banner
+    /// stays hidden.
+    @MainActor
+    private func publishStatus(for doc: PDFDocument) {
+        if doc.isLocked {
+            store.pdfStatus = .locked
+            return
+        }
+        // Probe up to the first 5 pages — enough signal to distinguish a
+        // scanned image PDF from a normal text PDF without paying to
+        // extract every page of a large document. >20 trimmed chars on
+        // any page is plenty to call it text-bearing.
+        var hasText = false
+        let probeCount = min(doc.pageCount, 5)
+        for i in 0..<probeCount {
+            if let page = doc.page(at: i),
+               let s = page.string,
+               s.trimmingCharacters(in: .whitespacesAndNewlines).count > 20 {
+                hasText = true
+                break
+            }
+        }
+        store.pdfStatus = hasText ? .ok : .noExtractableText
+    }
+
     private func loadDocumentIfNeeded(into view: FitWidthPDFView, context: Context) {
         guard let url = store.fileURL, url.isFileURL else {
             view.document = nil
@@ -193,9 +222,11 @@ struct PDFReaderView: NSViewRepresentable {
             // Document loads can outpace the first layout pass — fit-width
             // again now that the page dimensions are known.
             view.applyFitWidth()
+            publishStatus(for: doc)
         } else {
             view.document = nil
             context.coordinator.lastLoadedURL = nil
+            store.pdfStatus = .unloadable
         }
     }
 

@@ -61,7 +61,11 @@ struct ContentView: View {
             }
 
             ToolbarItem(placement: .principal) {
-                Text(store.fileURL.map { displayTitle(for: $0) } ?? "Mindle")
+                // Prefer the active tab's sourceURL (for URL-fetched PDFs
+                // whose fileURL points at a cached <hash>.pdf path) so
+                // the window chrome shows the URL's leaf rather than the
+                // cache filename.
+                Text(activeDisplayTitle(store: store))
                     .font(.system(size: 13, weight: .medium, design: .serif))
                     .foregroundStyle(c.muted)
                     .lineLimit(1)
@@ -240,6 +244,80 @@ struct ReaderPane: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+
+            // PDF-only banner: explains why annotation isn't working on
+            // password-protected or scanned PDFs. Hidden when the PDF is
+            // healthy or the active tab isn't a PDF.
+            if store.documentKind == .pdf, store.pdfStatus != .ok {
+                PDFStatusBanner(status: store.pdfStatus)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+    }
+}
+
+private struct PDFStatusBanner: View {
+    let status: PDFTabStatus
+    @EnvironmentObject var store: DocumentStore
+
+    var body: some View {
+        let c = store.theme.colors
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(c.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(headline)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(c.text)
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(c.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(c.surface)
+                .shadow(color: Color.black.opacity(0.08), radius: 4, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(c.rule.opacity(0.4), lineWidth: 0.5)
+        )
+        .frame(maxWidth: 520, alignment: .leading)
+    }
+
+    private var icon: String {
+        switch status {
+        case .ok: return ""
+        case .locked: return "lock.shield"
+        case .noExtractableText: return "doc.text.image"
+        case .unloadable: return "exclamationmark.triangle"
+        }
+    }
+    private var headline: String {
+        switch status {
+        case .ok: return ""
+        case .locked: return "Password-protected PDF"
+        case .noExtractableText: return "No extractable text"
+        case .unloadable: return "Couldn't open this PDF"
+        }
+    }
+    private var detail: String {
+        switch status {
+        case .ok: return ""
+        case .locked:
+            return "Mindle can't read or annotate locked PDFs. Open the file in Preview to unlock it, save a decrypted copy, then reopen it here."
+        case .noExtractableText:
+            return "This PDF appears to be a scanned image without an OCR text layer. You can read it, but highlights and notes won't anchor to passages."
+        case .unloadable:
+            return "The PDF could not be parsed — the file may be malformed or unsupported."
         }
     }
 }
@@ -516,6 +594,19 @@ func displayTitle(for url: URL) -> String {
         return "Clipboard · \(hash.prefix(8))"
     }
     return url.lastPathComponent
+}
+
+/// Title for the window chrome — preferred over `store.fileURL` directly
+/// because URL-fetched PDFs swap `fileURL` to a cached `<hash>.pdf` path
+/// at load time; the original URL is preserved on the tab's `sourceURL`
+/// and is what the user wants to see in the title bar.
+@MainActor
+func activeDisplayTitle(store: DocumentStore) -> String {
+    if let id = store.activeTabID,
+       let tab = store.tabs.first(where: { $0.id == id }) {
+        return displayTitle(for: tab.sourceURL ?? tab.fileURL)
+    }
+    return store.fileURL.map { displayTitle(for: $0) } ?? "Mindle"
 }
 
 /// Known reaction kinds for the rc1 vocabulary. The codec is open-ended
@@ -1282,7 +1373,7 @@ struct TabBarItem: View {
                     Image(systemName: "doc.text")
                         .font(.system(size: 10))
                         .foregroundStyle(isActive ? c.accent : c.muted)
-                    Text(displayTitle(for: tab.fileURL))
+                    Text(displayTitle(for: tab.sourceURL ?? tab.fileURL))
                         .font(.system(size: 12, design: .serif))
                         .foregroundStyle(isActive ? c.text : c.muted)
                         .lineLimit(1)
