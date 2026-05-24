@@ -767,6 +767,22 @@ struct AnnotationCard: View {
                         .foregroundStyle(dotColor)
                         .lineLimit(1)
                 }
+                // PDF-only: when the anchor doesn't resolve against the
+                // current document state, surface a small warning glyph.
+                // The card still navigates (jump arrow works), the
+                // highlight just doesn't draw on the page.
+                if store.orphanedAnnotations.contains(annotation.id) {
+                    Text("·").foregroundStyle(c.muted.opacity(0.4))
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(c.muted)
+                        .help("Anchor drifted — highlight isn't drawn on the page. The note + thread are still here; the passage may have moved or been edited.")
+                    Text("drifted")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(c.muted)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+                }
                 Spacer()
                 Button {
                     store.jumpTo(id: annotation.id)

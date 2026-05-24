@@ -541,20 +541,33 @@ struct PDFReaderView: NSViewRepresentable {
     @MainActor
     private func syncHighlightOverlays(view: FitWidthPDFView) {
         guard let doc = view.document else { return }
+        // Sweep existing overlays first.
         for pageIdx in 0..<doc.pageCount {
             guard let page = doc.page(at: pageIdx) else { continue }
             for existing in page.annotations where existing is MindleHighlightAnnotation {
                 page.removeAnnotation(existing)
             }
         }
+        // Re-draw, collecting any annotations that couldn't be anchored
+        // so the sidebar card can surface a drift indicator.
+        var orphans: Set<UUID> = []
         for ann in store.annotations {
             guard let pageIdx = ann.pageIndex,
                   pageIdx >= 0, pageIdx < doc.pageCount,
                   let page = doc.page(at: pageIdx),
-                  let pageText = page.string,
-                  let range = Self.findAnchorRange(for: ann, in: pageText) else { continue }
+                  let pageText = page.string else {
+                orphans.insert(ann.id)
+                continue
+            }
+            guard let range = Self.findAnchorRange(for: ann, in: pageText) else {
+                orphans.insert(ann.id)
+                continue
+            }
             let nsRange = NSRange(range, in: pageText)
-            guard let sel = page.selection(for: nsRange) else { continue }
+            guard let sel = page.selection(for: nsRange) else {
+                orphans.insert(ann.id)
+                continue
+            }
             let color = highlightColor(for: ann)
             for lineSel in sel.selectionsByLine() {
                 let bounds = lineSel.bounds(for: page)
@@ -567,6 +580,9 @@ struct PDFReaderView: NSViewRepresentable {
                 overlay.color = color
                 page.addAnnotation(overlay)
             }
+        }
+        if store.orphanedAnnotations != orphans {
+            store.orphanedAnnotations = orphans
         }
     }
 

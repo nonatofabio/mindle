@@ -198,6 +198,13 @@ final class DocumentStore: ObservableObject {
     /// to `.ok` whenever we transition to a Markdown tab so the banner
     /// doesn't leak across switches.
     @Published var pdfStatus: PDFTabStatus = .ok
+    /// Annotation ids on the active PDF tab whose anchor didn't resolve
+    /// against the current document — the card still lives in the
+    /// sidebar but the page overlay isn't drawn. `AnnotationCard` reads
+    /// this set to render a small "anchor drifted" cue. Markdown tabs
+    /// leave it empty (their anchor resolution lives in the JS pipeline
+    /// at render time, not surfaced here).
+    @Published var orphanedAnnotations: Set<UUID> = []
 
     /// UserDefaults keys for the user-level (cross-document) default of
     /// each reader preference. Sidecar still wins per-doc if it carries
@@ -892,6 +899,9 @@ final class DocumentStore: ObservableObject {
         // at .ok so the banner doesn't leak from a previously active
         // PDF tab.
         pdfStatus = .ok
+        // Same lifecycle for orphan set — re-populated by
+        // syncHighlightOverlays on PDF tabs; Markdown tabs stay empty.
+        orphanedAnnotations = []
         closeSearch()
         focusedAnnotation = nil
         editingAnnotationID = nil
