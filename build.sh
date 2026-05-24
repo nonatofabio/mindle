@@ -14,7 +14,7 @@ BIN="build/${BIN_NAME}"
 # CFBundleShortVersionString matches the appcast entry (critical for
 # Sparkle's version comparison). Untagged builds (local dev,
 # workflow_dispatch on main) fall back to the hardcoded value below.
-SHORT_VERSION_FALLBACK="2.2.4"
+SHORT_VERSION_FALLBACK="3.0.0-rc1"
 case "${GITHUB_REF:-}" in
   refs/tags/*)
     SHORT_VERSION="${GITHUB_REF#refs/tags/v}"
