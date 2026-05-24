@@ -233,11 +233,14 @@ struct ReaderPane: View {
                     .background(c.background)
             }
 
-            // Mindle's search bar only routes through the markdown
-            // pipeline today. PDF find-integration lands in a later
-            // stage; until then ⌘F on a PDF tab opens an empty search
-            // bar that won't match — hide it to avoid the confusion.
-            if store.showSearch && store.documentKind == .markdown {
+            // Search bar drives both pipelines now:
+            // - Markdown: WebReaderView pushes the query through mindleSearch
+            //   JS which wraps <mark> and reports total/current.
+            // - PDF: PDFReaderView pushes the query through
+            //   PDFDocument.findString, sets view.highlightedSelections +
+            //   currentSelection, scrolls to the active match, reports
+            //   total/current the same way.
+            if store.showSearch {
                 SearchBar()
                     .padding(.top, 10)
                     .padding(.trailing, 14)

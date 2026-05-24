@@ -152,6 +152,81 @@ struct PDFReaderView: NSViewRepresentable {
             context.coordinator.lastFocusID = focusID
             scrollTo(annotationID: focusID, view: view)
         }
+
+        // Search wiring. When the bar is hidden we feed an empty query
+        // through the same path so highlightedSelections gets cleared
+        // on close. Next/Prev signals from the bar step the current
+        // match cursor.
+        let effectiveQuery = store.showSearch ? store.searchQuery : ""
+        if effectiveQuery != context.coordinator.lastSearchQuery {
+            context.coordinator.lastSearchQuery = effectiveQuery
+            performPDFSearch(query: effectiveQuery, view: view, coordinator: context.coordinator)
+        }
+        if let t = store.searchNextRequestedAt,
+           t != context.coordinator.lastSearchNextAt {
+            context.coordinator.lastSearchNextAt = t
+            stepPDFSearch(by: 1, view: view, coordinator: context.coordinator)
+        }
+        if let t = store.searchPrevRequestedAt,
+           t != context.coordinator.lastSearchPrevAt {
+            context.coordinator.lastSearchPrevAt = t
+            stepPDFSearch(by: -1, view: view, coordinator: context.coordinator)
+        }
+    }
+
+    // MARK: - Find
+
+    /// Run a fresh PDFDocument.findString for `query`, push matches into
+    /// the view's highlightedSelections (yellow per page), set the first
+    /// match as currentSelection (PDFView paints that one darker), and
+    /// scroll it into view. Mirrors the markdown side's behaviour: empty
+    /// query → clear everything; no matches → highlightedSelections=nil
+    /// and total/current=0; matches → first one becomes current.
+    @MainActor
+    private func performPDFSearch(query: String, view: FitWidthPDFView, coordinator: Coordinator) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            view.highlightedSelections = nil
+            view.setCurrentSelection(nil, animate: false)
+            coordinator.searchMatches = []
+            coordinator.searchCurrentIdx = 0
+            store.updateSearchResult(total: 0, current: 0)
+            return
+        }
+        guard let doc = view.document else {
+            store.updateSearchResult(total: 0, current: 0)
+            return
+        }
+        let matches = doc.findString(trimmed, withOptions: .caseInsensitive)
+        coordinator.searchMatches = matches
+        if matches.isEmpty {
+            view.highlightedSelections = nil
+            view.setCurrentSelection(nil, animate: false)
+            coordinator.searchCurrentIdx = 0
+            store.updateSearchResult(total: 0, current: 0)
+            return
+        }
+        view.highlightedSelections = matches
+        coordinator.searchCurrentIdx = 0
+        view.setCurrentSelection(matches[0], animate: false)
+        view.go(to: matches[0])
+        store.updateSearchResult(total: matches.count, current: 1)
+    }
+
+    /// Step the current search match by `step` (+1 next, -1 prev) with
+    /// wrap-around. Updates view.currentSelection + scrolls to it, and
+    /// reports the new 1-based position to the search bar via
+    /// updateSearchResult.
+    @MainActor
+    private func stepPDFSearch(by step: Int, view: FitWidthPDFView, coordinator: Coordinator) {
+        let count = coordinator.searchMatches.count
+        guard count > 0 else { return }
+        let next = ((coordinator.searchCurrentIdx + step) % count + count) % count
+        coordinator.searchCurrentIdx = next
+        let match = coordinator.searchMatches[next]
+        view.setCurrentSelection(match, animate: true)
+        view.go(to: match)
+        store.updateSearchResult(total: count, current: next + 1)
     }
 
     /// Find the annotation by id, navigate the PDFView to its page, and
@@ -239,6 +314,11 @@ struct PDFReaderView: NSViewRepresentable {
         var lastNoteAt: Date?
         var lastAnnotations: [Annotation] = []
         var lastFocusID: UUID?
+        var lastSearchQuery: String = ""
+        var lastSearchNextAt: Date?
+        var lastSearchPrevAt: Date?
+        var searchMatches: [PDFSelection] = []
+        var searchCurrentIdx: Int = 0
         /// NotificationCenter token for the PDFView selection bridge.
         /// Removed in dismantleNSView so we don't leak observers across
         /// SwiftUI's recreation of the representable.
