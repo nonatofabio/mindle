@@ -184,12 +184,22 @@ struct PDFReaderView: NSViewRepresentable {
     /// and total/current=0; matches → first one becomes current.
     @MainActor
     private func performPDFSearch(query: String, view: FitWidthPDFView, coordinator: Coordinator) {
+        // Clear FIRST. PDFKit's highlightedSelections setter doesn't
+        // reliably evict the previous batch when re-assigned rapidly —
+        // search-as-you-type ends up painting every keystroke's matches
+        // on top of the previous ones. Explicit nil makes the eviction
+        // stick before we paint the new matches.
+        view.highlightedSelections = nil
+        view.setCurrentSelection(nil, animate: false)
+        coordinator.searchMatches = []
+        coordinator.searchCurrentIdx = 0
+
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            view.highlightedSelections = nil
-            view.setCurrentSelection(nil, animate: false)
-            coordinator.searchMatches = []
-            coordinator.searchCurrentIdx = 0
+        // Single-char queries match nearly every page (every "p", every
+        // "a") — useless overlay plus slow findString on long PDFs.
+        // Wait for at least 2 chars before running a search. Empty
+        // query falls into the same branch and reports total=0 cleanly.
+        guard trimmed.count >= 2 else {
             store.updateSearchResult(total: 0, current: 0)
             return
         }
@@ -198,16 +208,12 @@ struct PDFReaderView: NSViewRepresentable {
             return
         }
         let matches = doc.findString(trimmed, withOptions: .caseInsensitive)
-        coordinator.searchMatches = matches
         if matches.isEmpty {
-            view.highlightedSelections = nil
-            view.setCurrentSelection(nil, animate: false)
-            coordinator.searchCurrentIdx = 0
             store.updateSearchResult(total: 0, current: 0)
             return
         }
+        coordinator.searchMatches = matches
         view.highlightedSelections = matches
-        coordinator.searchCurrentIdx = 0
         view.setCurrentSelection(matches[0], animate: false)
         view.go(to: matches[0])
         store.updateSearchResult(total: matches.count, current: 1)
