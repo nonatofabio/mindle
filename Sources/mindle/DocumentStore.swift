@@ -1271,35 +1271,54 @@ final class DocumentStore: ObservableObject {
     /// that re-anchor on reopen uses, sharing the
     /// `PDFReaderView.findAnchorRange` helper. First page that matches
     /// wins — when the same text appears on multiple pages, the agent
-    /// can constrain by supplying a more specific anchor. (Prefix/suffix
-    /// disambiguation across pages is a stage-6 polish.)
+    /// can constrain by supplying a more specific anchor. Prefix/suffix
+    /// disambiguation now scores candidates by neighborhood overlap and
+    /// picks the best across pages.
     private func applyPDFAnchorIfApplicable(to ann: inout Annotation, tabFileURL: URL) {
         guard DocumentKind.kind(for: tabFileURL) == .pdf,
-              let resolved = resolvePDFAnchor(text: ann.text, fileURL: tabFileURL) else {
+              let resolved = resolvePDFAnchor(
+                text: ann.text,
+                prefix: ann.prefix,
+                suffix: ann.suffix,
+                fileURL: tabFileURL
+              ) else {
             return
         }
         ann.pageIndex = resolved.pageIndex
         ann.pageTextHash = resolved.pageTextHash
     }
 
-    /// Open the PDF at `fileURL` and scan its pages for the first one
-    /// whose extracted text contains `text` (literal first, flex-
-    /// whitespace fallback). Returns the page index plus a hash of that
-    /// page's text for later drift detection on reopen. Nil when nothing
-    /// matches — the annotation still gets created without an overlay,
-    /// so the agent's note is visible in the sidebar even if the anchor
-    /// can't be drawn.
-    private func resolvePDFAnchor(text: String, fileURL: URL) -> (pageIndex: Int, pageTextHash: String)? {
+    /// Open the PDF at `fileURL`, score every page that contains the
+    /// anchor text, and return the highest-scoring page. Score weights
+    /// each candidate by how much of prefix + suffix matches the actual
+    /// neighborhood — when the same text appears on multiple pages
+    /// (figure caption referenced in body etc.), this picks the page
+    /// where the surrounding chars actually correspond to the agent's
+    /// view of the world. Falls back gracefully: a single match scores
+    /// 0 and still wins; no matches anywhere returns nil and the agent's
+    /// annotation lands without a page anchor.
+    private func resolvePDFAnchor(
+        text: String,
+        prefix: String,
+        suffix: String,
+        fileURL: URL
+    ) -> (pageIndex: Int, pageTextHash: String)? {
         guard let doc = PDFDocument(url: fileURL) else { return nil }
-        let probe = Annotation(text: text, prefix: "", suffix: "", note: "")
+        let probe = Annotation(text: text, prefix: prefix, suffix: suffix, note: "")
+        var best: (pageIndex: Int, pageTextHash: String, score: Int)?
         for pageIdx in 0..<doc.pageCount {
             guard let page = doc.page(at: pageIdx),
-                  let pageText = page.string else { continue }
-            if PDFReaderView.findAnchorRange(for: probe, in: pageText) != nil {
-                return (pageIdx, Self.contentHash(pageText))
+                  let pageText = page.string,
+                  let candidate = PDFReaderView.bestAnchor(for: probe, in: pageText) else {
+                continue
+            }
+            let hash = Self.contentHash(pageText)
+            if best == nil || candidate.score > best!.score {
+                best = (pageIdx, hash, candidate.score)
             }
         }
-        return nil
+        guard let best else { return nil }
+        return (best.pageIndex, best.pageTextHash)
     }
 
     /// MCP-side annotation clear. Removes the annotation with the given

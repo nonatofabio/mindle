@@ -389,17 +389,118 @@ struct PDFReaderView: NSViewRepresentable {
     /// the page until a later doc edit puts the text back. Stage 6 will
     /// add an "orphaned" UI cue.
     static func findAnchorRange(for ann: Annotation, in pageText: String) -> Range<String.Index>? {
-        if let r = pageText.range(of: ann.text) {
-            return r
+        bestAnchor(for: ann, in: pageText)?.range
+    }
+
+    /// Same as `findAnchorRange` but also returns a confidence score so
+    /// callers (notably `resolvePDFAnchor` doing cross-page search) can
+    /// compare candidates across pages and pick the one whose neighborhood
+    /// best matches the stored prefix/suffix. The score is the number of
+    /// chars that match between actual + stored prefix (tail-aligned —
+    /// because prefix is what comes *before* the anchor) plus the same
+    /// for suffix (head-aligned). When neither prefix nor suffix is set,
+    /// every match scores 0 and first-on-page wins.
+    static func bestAnchor(for ann: Annotation, in pageText: String) -> (range: Range<String.Index>, score: Int)? {
+        // Pass 1: literal. Enumerate every occurrence, score each.
+        var candidates: [Range<String.Index>] = []
+        var searchFrom = pageText.startIndex
+        while let r = pageText.range(of: ann.text, range: searchFrom..<pageText.endIndex) {
+            candidates.append(r)
+            // Step past one char of the match so overlapping occurrences
+            // don't get missed but we don't infinite-loop on empty text.
+            searchFrom = pageText.index(after: r.lowerBound)
         }
+        if let best = pickBest(candidates, in: pageText, annotation: ann) {
+            return best
+        }
+        // Pass 2: flex whitespace, only when the page extracted
+        // identically to creation time is *not* the case (otherwise the
+        // literal miss is real drift, not whitespace shuffle).
         if let storedHash = ann.pageTextHash,
            storedHash == DocumentStore.contentHash(pageText) {
-            // Extraction is byte-identical to creation time, so the
-            // literal failure isn't a whitespace artifact — the anchor
-            // really has drifted. Don't paper over it with the regex.
             return nil
         }
-        return flexibleWhitespaceRange(target: ann.text, in: pageText)
+        guard let flexRange = flexibleWhitespaceRange(target: ann.text, in: pageText) else {
+            return nil
+        }
+        let score = neighborhoodScore(range: flexRange, in: pageText, annotation: ann)
+        return (flexRange, score)
+    }
+
+    private static func pickBest(
+        _ ranges: [Range<String.Index>],
+        in pageText: String,
+        annotation ann: Annotation
+    ) -> (range: Range<String.Index>, score: Int)? {
+        guard !ranges.isEmpty else { return nil }
+        if ranges.count == 1 {
+            let r = ranges[0]
+            return (r, neighborhoodScore(range: r, in: pageText, annotation: ann))
+        }
+        var best: (range: Range<String.Index>, score: Int)?
+        for r in ranges {
+            let s = neighborhoodScore(range: r, in: pageText, annotation: ann)
+            if best == nil || s > best!.score {
+                best = (r, s)
+            }
+        }
+        return best
+    }
+
+    /// Score a candidate range by how well its real prefix/suffix
+    /// neighborhood matches the annotation's stored prefix/suffix.
+    /// Prefix is tail-aligned (chars immediately *before* the match);
+    /// suffix is head-aligned (chars immediately *after*). Score is the
+    /// sum of matching-char counts on each side. Empty stored prefix /
+    /// suffix score 0 — single-match cases and ambiguous cases without
+    /// disambiguating context end up at 0 and the caller still picks the
+    /// first candidate consistently.
+    private static func neighborhoodScore(
+        range: Range<String.Index>,
+        in pageText: String,
+        annotation ann: Annotation
+    ) -> Int {
+        var score = 0
+        if !ann.prefix.isEmpty {
+            let lo = pageText.startIndex
+            // Take up to ann.prefix.count chars immediately before the match.
+            let want = ann.prefix.count
+            let dist = pageText.distance(from: lo, to: range.lowerBound)
+            let take = min(want, dist)
+            let actualStart = pageText.index(range.lowerBound, offsetBy: -take)
+            let actualPrefix = String(pageText[actualStart..<range.lowerBound])
+            score += tailMatchCount(actualPrefix, ann.prefix)
+        }
+        if !ann.suffix.isEmpty {
+            let hi = pageText.endIndex
+            let want = ann.suffix.count
+            let dist = pageText.distance(from: range.upperBound, to: hi)
+            let take = min(want, dist)
+            let actualEnd = pageText.index(range.upperBound, offsetBy: take)
+            let actualSuffix = String(pageText[range.upperBound..<actualEnd])
+            score += headMatchCount(actualSuffix, ann.suffix)
+        }
+        return score
+    }
+
+    /// Count of consecutive matching chars from the END of both strings.
+    private static func tailMatchCount(_ a: String, _ b: String) -> Int {
+        let ac = Array(a), bc = Array(b)
+        var n = 0
+        while n < ac.count && n < bc.count && ac[ac.count - 1 - n] == bc[bc.count - 1 - n] {
+            n += 1
+        }
+        return n
+    }
+
+    /// Count of consecutive matching chars from the START of both strings.
+    private static func headMatchCount(_ a: String, _ b: String) -> Int {
+        let ac = Array(a), bc = Array(b)
+        var n = 0
+        while n < ac.count && n < bc.count && ac[n] == bc[n] {
+            n += 1
+        }
+        return n
     }
 
     private static func flexibleWhitespaceRange(target: String, in pageText: String) -> Range<String.Index>? {
