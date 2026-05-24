@@ -363,15 +363,13 @@ struct MindleCommands: Commands {
             .keyboardShortcut("k", modifiers: [.command, .shift])
             .disabled(store == nil)
 
-            // Edit the enclosing markdown block of the current selection.
-            // Beeps on PDF tabs — editing PDFs is out of v3.1 scope.
-            // Disabled when there's no selection cached or the tab isn't
-            // markdown.
-            Button("Edit Passage…") { store?.requestEdit() }
+            // Open the whole markdown document as raw source in the
+            // EditingPane overlay. No selection required — the editor
+            // pre-fills with the full rawText. PDFs are out of v3.1
+            // scope; the menu disables for PDF tabs.
+            Button("Edit Document…") { store?.requestEdit() }
                 .keyboardShortcut("e", modifiers: .command)
-                .disabled(store == nil
-                    || store?.documentKind != .markdown
-                    || !(store?.hasSelection ?? false))
+                .disabled(store == nil || store?.documentKind != .markdown)
 
             Divider()
             Button("Keep All Changes") { store?.acceptAllChanges() }

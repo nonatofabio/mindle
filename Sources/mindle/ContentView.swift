@@ -224,10 +224,19 @@ struct ReaderPane: View {
             // view instance when SwiftUI rebuilds — there's no shared
             // state across renderers, which keeps the two pipelines
             // decoupled.
+            // When the user has invoked the editor (⌘E), replace the
+            // markdown renderer with the full-document editor. Reader
+            // view returns when the editor closes (Save / Cancel both
+            // nil out store.editingBlock).
             switch store.documentKind {
             case .markdown:
-                WebReaderView()
-                    .background(c.background)
+                if let block = store.editingBlock {
+                    EditingPane(block: block)
+                        .background(c.background)
+                } else {
+                    WebReaderView()
+                        .background(c.background)
+                }
             case .pdf:
                 PDFReaderView()
                     .background(c.background)
@@ -245,19 +254,6 @@ struct ReaderPane: View {
                     .padding(.top, 10)
                     .padding(.trailing, 14)
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            // Block editor overlay — shown when the user has invoked
-            // ⌘E on a markdown selection. Slide-down from the top of the
-            // reader pane; bare monospace source view with three buttons
-            // (Save / Preview / Cancel). Markdown only — the applyEdit
-            // path on DocumentStore beeps on PDF tabs.
-            if let block = store.editingBlock {
-                EditingPane(block: block)
-                    .frame(maxWidth: 640)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 

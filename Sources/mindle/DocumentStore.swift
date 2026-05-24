@@ -326,15 +326,12 @@ final class DocumentStore: ObservableObject {
     /// observes this to reset its scale factor to fit-width after the
     /// user has manually zoomed. No-op on Markdown tabs.
     @Published var pdfFitWidthRequestedAt: Date? = nil
-    /// Bumped by Edit menu (⌘E) → WebReaderView captures the live
-    /// selection, hands the text/prefix/suffix back to applyEdit, which
-    /// resolves the enclosing markdown block and sets `editingBlock`.
-    /// Mirrors the highlight/note signal pattern.
-    @Published var editRequestedAt: Date? = nil
-    /// The markdown block currently being edited. Setting non-nil opens
-    /// the EditingPane overlay; nil closes it. Holds the original block
-    /// text + hash for drift detection + the find-and-replace range for
-    /// the eventual write-through to rawText.
+    /// The whole-document edit session in progress, or nil when the
+    /// editor is closed. Setting non-nil opens the EditingPane; nil
+    /// closes it. Holds the rawText + hash at open time so stage 4's
+    /// drift detection has a baseline. v3.1 ships whole-doc only —
+    /// block-scoped editing was the original sketch but the user's
+    /// brief is "the bare text," so we open the full file source.
     @Published var editingBlock: EditingBlock? = nil
 
     // FSEvents-based watcher on the active file. Replaced whenever the
@@ -1004,45 +1001,17 @@ final class DocumentStore: ObservableObject {
         DebugConsole.shared.log("NOTE requested")
         noteRequestedAt = Date()
     }
+
+    /// Open the whole-document editor. No selection required; the
+    /// editor pre-fills with the full rawText. PDFs are out of v3.1
+    /// scope — beep and bail.
     func requestEdit() {
         DebugConsole.shared.log("EDIT requested")
-        editRequestedAt = Date()
-    }
-
-    /// Called by WebReaderView after the JS round-trip returns the live
-    /// selection. Finds the enclosing markdown block (blank-line-bounded
-    /// paragraph today; code blocks / list items can refine later),
-    /// captures its content + hash, and opens the EditingPane.
-    func applyEdit(text: String, prefix: String, suffix: String) {
-        DebugConsole.shared.log("EDIT: '\(text.prefix(30))'")
-        // PDFs are out of scope for v3.1 — beep and bail. Stage 6 can
-        // refine if a path opens up.
         guard documentKind == .markdown else { NSSound.beep(); return }
-        guard let block = Self.enclosingBlock(in: rawText, around: text) else {
-            NSSound.beep()
-            return
-        }
         editingBlock = EditingBlock(
-            originalText: block,
-            originalHash: Self.contentHash(block)
+            originalText: rawText,
+            originalHash: Self.contentHash(rawText)
         )
-    }
-
-    /// Find the markdown block (blank-line-bounded paragraph) in `source`
-    /// that contains `selection`. The block extends from the empty line
-    /// before the selection to the empty line after — heuristic enough
-    /// for paragraphs and the common case; code blocks / list items get
-    /// over- or under-included today and refine in stage 6.
-    static func enclosingBlock(in source: String, around selection: String) -> String? {
-        guard let selRange = source.range(of: selection) else { return nil }
-        let before = source[source.startIndex..<selRange.lowerBound]
-        let after = source[selRange.upperBound..<source.endIndex]
-        let blockStart = before.range(of: "\n\n", options: .backwards)?.upperBound
-            ?? source.startIndex
-        let blockEnd = after.range(of: "\n\n")?.lowerBound
-            ?? source.endIndex
-        guard blockStart < blockEnd else { return nil }
-        return String(source[blockStart..<blockEnd])
     }
 
     /// Called by WebReaderView once the JS round-trip returns the live

@@ -1,11 +1,11 @@
 import SwiftUI
 import AppKit
 
-/// Slide-down editor for a single markdown block. Shown as an overlay
-/// on `ReaderPane` when `store.editingBlock` is set; closed when nil.
-/// Bare raw markdown source in a monospace font — Mindle isn't trying
-/// to be a markdown editor; this is the smallest surface that lets the
-/// user fix a thing in-place without switching to vim / iA Writer.
+/// Whole-document editor for a markdown file. Replaces the reader pane
+/// (WebReaderView) when `store.editingBlock` is set; reader returns
+/// when nil. Bare raw markdown source in a monospace font — Mindle
+/// isn't trying to be a markdown editor; this is the smallest surface
+/// that lets the user fix a thing in-place without switching apps.
 ///
 /// Stage 1 scope: source view only (no preview). Three buttons —
 /// Save / Preview / Cancel — wired to a no-op Save and Preview for now.
@@ -55,7 +55,7 @@ struct EditingPane: View {
                     previewPlaceholder
                 }
             }
-            .frame(minHeight: 200, idealHeight: 280, maxHeight: 360)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
@@ -64,15 +64,7 @@ struct EditingPane: View {
                 .padding(.vertical, 10)
                 .background(c.surface)
         }
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(c.background)
-                .shadow(color: Color.black.opacity(0.18), radius: 12, y: 4)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(c.rule.opacity(0.4), lineWidth: 0.5)
-        )
+        .background(c.background)
         .onAppear {
             // Defer focus by one runloop pass — TextEditor isn't in the
             // view tree until SwiftUI has built the body.
