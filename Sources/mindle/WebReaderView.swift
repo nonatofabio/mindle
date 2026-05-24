@@ -144,6 +144,13 @@ struct WebReaderView: NSViewRepresentable {
                 self.store.applyNote(text: text, prefix: prefix, suffix: suffix)
             }
         }
+
+        if let t = store.editRequestedAt, t != coord.lastEditAt {
+            coord.lastEditAt = t
+            coord.fetchLiveSelection(web: web) { text, prefix, suffix in
+                self.store.applyEdit(text: text, prefix: prefix, suffix: suffix)
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -170,6 +177,7 @@ struct WebReaderView: NSViewRepresentable {
         var lastPDFExportAt: Date?
         var lastHighlightAt: Date?
         var lastNoteAt: Date?
+        var lastEditAt: Date?
 
         init(_ p: WebReaderView) { parent = p }
 

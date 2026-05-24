@@ -248,6 +248,19 @@ struct ReaderPane: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
+            // Block editor overlay — shown when the user has invoked
+            // ⌘E on a markdown selection. Slide-down from the top of the
+            // reader pane; bare monospace source view with three buttons
+            // (Save / Preview / Cancel). Markdown only — the applyEdit
+            // path on DocumentStore beeps on PDF tabs.
+            if let block = store.editingBlock {
+                EditingPane(block: block)
+                    .frame(maxWidth: 640)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 14)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             // PDF-only banner: explains why annotation isn't working on
             // password-protected or scanned PDFs. Hidden when the PDF is
             // healthy or the active tab isn't a PDF.
