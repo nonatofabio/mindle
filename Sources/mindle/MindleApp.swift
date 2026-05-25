@@ -369,7 +369,9 @@ struct MindleCommands: Commands {
             // scope; the menu disables for PDF tabs.
             Button("Edit Document…") { store?.requestEdit() }
                 .keyboardShortcut("e", modifiers: .command)
-                .disabled(store == nil || store?.documentKind != .markdown)
+                .disabled(store == nil
+                    || store?.documentKind != .markdown
+                    || !(store?.fileURL?.isFileURL ?? false))
 
             Divider()
             Button("Keep All Changes") { store?.acceptAllChanges() }

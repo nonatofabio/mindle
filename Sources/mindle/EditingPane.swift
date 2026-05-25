@@ -123,8 +123,6 @@ struct EditingPane: View {
     }
 
     private func save() {
-        // Stage 3 lands the actual write-through. For stage 1 we just
-        // close the editor so the flow round-trips visually.
-        store.editingBlock = nil
+        store.commitEdit(draft: draft)
     }
 }

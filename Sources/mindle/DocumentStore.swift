@@ -1003,15 +1003,47 @@ final class DocumentStore: ObservableObject {
     }
 
     /// Open the whole-document editor. No selection required; the
-    /// editor pre-fills with the full rawText. PDFs are out of v3.1
-    /// scope — beep and bail.
+    /// editor pre-fills with the full rawText. Restricted to local-file
+    /// markdown tabs — URL-fetched and clipboard tabs don't have a
+    /// writable destination for Save. PDFs are out of v3.1 scope.
     func requestEdit() {
         DebugConsole.shared.log("EDIT requested")
-        guard documentKind == .markdown else { NSSound.beep(); return }
+        guard documentKind == .markdown,
+              fileURL?.isFileURL == true else {
+            NSSound.beep()
+            return
+        }
         editingBlock = EditingBlock(
             originalText: rawText,
             originalHash: Self.contentHash(rawText)
         )
+    }
+
+    /// Save the editor's draft back to disk and close the editor.
+    /// Updates in-memory state first (rawText + lastSyncedText) so the
+    /// file watcher's reloadFromDisk fires, finds text == rawText, and
+    /// short-circuits the no-op — no echo loop. lastSyncedText becomes
+    /// the new baseline for diff-on-reload, so subsequent *external*
+    /// writes show as tracked changes against this save, not against
+    /// the pre-edit text. Beeps and leaves the editor open on a write
+    /// failure so the user doesn't lose work.
+    func commitEdit(draft: String) {
+        guard let url = fileURL, url.isFileURL else {
+            NSSound.beep()
+            return
+        }
+        DebugConsole.shared.log("EDIT save: \(draft.count) chars")
+        do {
+            try draft.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            DebugConsole.shared.log("EDIT save failed: \(error)")
+            NSSound.beep()
+            return
+        }
+        rawText = draft
+        lastSyncedText = draft
+        snapshotActiveTab()
+        editingBlock = nil
     }
 
     /// Called by WebReaderView once the JS round-trip returns the live
