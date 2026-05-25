@@ -52,7 +52,7 @@ struct EditingPane: View {
                 case .source:
                     sourceEditor
                 case .preview:
-                    previewPlaceholder
+                    previewPane
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -86,17 +86,28 @@ struct EditingPane: View {
             .focused($editorFocused)
     }
 
-    private var previewPlaceholder: some View {
+    private var previewPane: some View {
         let c = store.theme.colors
-        return VStack(spacing: 8) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 24, weight: .ultraLight))
-                .foregroundStyle(c.muted.opacity(0.7))
-            Text("Preview lands in stage 2.")
-                .font(.system(size: 12, design: .serif).italic())
-                .foregroundStyle(c.muted)
+        return ScrollView {
+            if let rendered = try? AttributedString(
+                markdown: draft,
+                options: .init(interpretedSyntax: .full)
+            ) {
+                Text(rendered)
+                    .font(.system(size: 14, design: .serif))
+                    .foregroundStyle(c.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+            } else {
+                Text("Couldn't render preview — markdown may have invalid syntax.")
+                    .font(.system(size: 12, design: .serif).italic())
+                    .foregroundStyle(c.muted)
+                    .padding()
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(c.background)
     }
 
     private var actionRow: some View {
