@@ -1020,19 +1020,43 @@ final class DocumentStore: ObservableObject {
     }
 
     /// Save the editor's draft back to disk and close the editor.
-    /// Updates in-memory state first (rawText + lastSyncedText) so the
-    /// file watcher's reloadFromDisk fires, finds text == rawText, and
-    /// short-circuits the no-op — no echo loop. lastSyncedText becomes
-    /// the new baseline for diff-on-reload, so subsequent *external*
-    /// writes show as tracked changes against this save, not against
-    /// the pre-edit text. Beeps and leaves the editor open on a write
-    /// failure so the user doesn't lose work.
+    ///
+    /// First runs a drift check: if `rawText`'s current hash differs
+    /// from the hash captured at edit-open time, an external writer
+    /// (the file watcher pulled in a concurrent write from an agent /
+    /// teammate / another app) has landed bytes under our feet. Show
+    /// the user a three-way dialog: overwrite with their version,
+    /// discard their edits, or stay in the editor to merge manually.
+    /// Without this check, Save would silently clobber the external
+    /// change.
+    ///
+    /// On the happy path: write the draft to fileURL atomically, update
+    /// rawText + lastSyncedText (the latter becomes the new diff-on-
+    /// reload baseline), snapshot the tab, close the editor. The file
+    /// watcher's reloadFromDisk fires shortly after — finds text ==
+    /// rawText and short-circuits, no echo loop.
     func commitEdit(draft: String) {
-        guard let url = fileURL, url.isFileURL else {
+        guard let url = fileURL, url.isFileURL,
+              let block = editingBlock else {
             NSSound.beep()
             return
         }
         DebugConsole.shared.log("EDIT save: \(draft.count) chars")
+
+        let currentHash = Self.contentHash(rawText)
+        if currentHash != block.originalHash {
+            let action = promptDriftResolution()
+            switch action {
+            case .keepMine:
+                break
+            case .discardMine:
+                editingBlock = nil
+                return
+            case .stayInEditor:
+                return
+            }
+        }
+
         do {
             try draft.write(to: url, atomically: true, encoding: .utf8)
         } catch {
@@ -1044,6 +1068,25 @@ final class DocumentStore: ObservableObject {
         lastSyncedText = draft
         snapshotActiveTab()
         editingBlock = nil
+    }
+
+    private enum DriftResolution {
+        case keepMine, discardMine, stayInEditor
+    }
+
+    private func promptDriftResolution() -> DriftResolution {
+        let alert = NSAlert()
+        alert.messageText = "This file changed while you were editing"
+        alert.informativeText = "Another writer (an agent, another app, or a git pull) modified the file after you opened the editor. What would you like to do?"
+        alert.addButton(withTitle: "Save My Version")
+        alert.addButton(withTitle: "Discard My Edits")
+        alert.addButton(withTitle: "Keep Editing")
+        let response = alert.runModal()
+        switch response {
+        case .alertFirstButtonReturn:  return .keepMine
+        case .alertSecondButtonReturn: return .discardMine
+        default:                       return .stayInEditor
+        }
     }
 
     /// Called by WebReaderView once the JS round-trip returns the live
