@@ -307,6 +307,7 @@ struct MindleCommands: Commands {
             Button("Open…") { store?.openWithPanel() }
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(store == nil)
+            OpenRecentMenu(store: store)
             Button("Open URL…") { store?.openURLWithPrompt() }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(store == nil)
@@ -464,6 +465,41 @@ struct MindleCommands: Commands {
             Button("Debug Console") { DebugConsole.shared.toggle() }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
         }
+    }
+}
+
+/// File → Open Recent submenu. Reads the system's recent-document list
+/// (populated by `NSDocumentController.noteNewRecentDocumentURL` from
+/// `DocumentStore.open`) and exposes each entry as a menu item that
+/// re-opens the file through the standard `store.open(url:)` path. URLs
+/// pointing at files that no longer exist render disabled rather than
+/// silently disappearing — so the user can decide to Clear Menu.
+struct OpenRecentMenu: View {
+    let store: DocumentStore?
+    private var urls: [URL] {
+        NSDocumentController.shared.recentDocumentURLs
+    }
+
+    var body: some View {
+        Menu("Open Recent") {
+            if urls.isEmpty {
+                Button("No Recent Files") {}
+                    .disabled(true)
+            } else {
+                ForEach(urls, id: \.self) { url in
+                    let missing = !FileManager.default.fileExists(atPath: url.path)
+                    Button(url.lastPathComponent) {
+                        store?.open(url: url)
+                    }
+                    .disabled(store == nil || missing)
+                }
+                Divider()
+                Button("Clear Menu") {
+                    NSDocumentController.shared.clearRecentDocuments(nil)
+                }
+            }
+        }
+        .disabled(store == nil)
     }
 }
 
