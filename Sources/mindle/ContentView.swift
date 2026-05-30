@@ -1260,7 +1260,15 @@ struct FileBrowserSidebar: View {
 
             if let tree = store.fileTree, let children = tree.children, !children.isEmpty {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                    // Non-lazy VStack so the tree's content size stays constant
+                    // when other window state changes (e.g. fileURL flipping
+                    // isCurrent on a row, or the TabBar appearing/disappearing
+                    // as tabs.count crosses the 2-to-1 boundary). LazyVStack
+                    // re-measured rows on those events and could nudge the
+                    // scroll position, making the active row appear to shift
+                    // (#36). The directories Mindle browses are typically
+                    // small enough that eager realization is fine.
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(children) { child in
                             FileTreeRow(node: child, depth: 0)
                         }
