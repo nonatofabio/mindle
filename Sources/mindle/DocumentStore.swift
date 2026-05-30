@@ -185,6 +185,12 @@ struct DocumentTab: Identifiable, Equatable {
     /// dedup check (so re-opening the same URL re-activates the tab
     /// instead of fetching again).
     var sourceURL: URL? = nil
+    /// True when an external file or sidecar change landed on this tab
+    /// while another tab was active. The TabBar shows a small dot at the
+    /// tab's leading edge until the user activates the tab, at which
+    /// point the flag is cleared. Watchers for inactive tabs flip this;
+    /// the active-tab watcher runs the existing reload paths instead.
+    var hasUnread: Bool = false
 }
 
 @MainActor
@@ -346,6 +352,15 @@ final class DocumentStore: ObservableObject {
     /// suppress the FSEvents echo that our own atomic write triggers.
     private var lastSelfSidecarWriteAt: Date?
 
+    /// Watchers covering every tab that is *not* the active one. Their
+    /// only job is to set `DocumentTab.hasUnread = true` so the TabBar
+    /// can render a dot. The active tab is intentionally absent here —
+    /// `fileWatcher` / `sidecarWatcher` already handle its reloads, and
+    /// duplicating watchers would cause every active reload to bump the
+    /// (unrelated) unread flag.
+    private var inactiveFileWatchers: [UUID: FileWatcher] = [:]
+    private var inactiveSidecarWatchers: [UUID: FileWatcher] = [:]
+
     var hasSelection: Bool { !selectionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     /// Current document's renderer kind, derived from the active file URL.
@@ -355,20 +370,23 @@ final class DocumentStore: ObservableObject {
 
     private var sidecarURL: URL? {
         guard let u = fileURL else { return nil }
-        // Remote (http/https) URLs don't have an adjacent on-disk location
-        // we can write to. Annotations on a fetched URL persist in app
-        // support, keyed by a stable hash of the URL string so the same
-        // page opens with its prior annotations next time.
+        return Self.sidecarURL(for: u)
+    }
+
+    /// Sidecar URL for an arbitrary document URL — same logic as the
+    /// instance property, but addressable for any tab (needed by the
+    /// per-tab inactive watchers). Same three branches: http(s) sidecars
+    /// in app support keyed by a stable hash; clipboard:// sidecars
+    /// content-addressed by the URL's last path component; everything
+    /// else writes a dot-prefixed adjacent file.
+    static func sidecarURL(for u: URL) -> URL? {
         if u.scheme == "http" || u.scheme == "https" {
-            return Self.urlSidecarsDir()?
-                .appendingPathComponent("\(Self.urlKey(for: u)).mindle.json")
+            return urlSidecarsDir()?
+                .appendingPathComponent("\(urlKey(for: u)).mindle.json")
         }
-        // Clipboard documents — content-addressed; the URL is
-        // `clipboard:///<contentHash>` and the hash *is* the sidecar key,
-        // so re-pasting identical text re-attaches to the prior annotations.
         if u.scheme == "clipboard" {
             let hash = u.lastPathComponent
-            return Self.clipboardSidecarsDir()?
+            return clipboardSidecarsDir()?
                 .appendingPathComponent("\(hash).mindle.json")
         }
         return u.deletingLastPathComponent()
@@ -504,6 +522,9 @@ final class DocumentStore: ObservableObject {
             }
             NSDocumentController.shared.noteNewRecentDocumentURL(url)
             updateWatcher()
+            // The previously-active tab is now inactive — give it a
+            // watcher pair so external changes can flip its unread flag.
+            syncInactiveWatchers()
         } catch {
             NSSound.beep()
         }
@@ -558,6 +579,56 @@ final class DocumentStore: ObservableObject {
             sidecarWatcher = FileWatcher(url: sidecar) { [weak self] in
                 self?.reloadSidecarFromDisk()
             }
+        }
+    }
+
+    /// Maintains `inactiveFileWatchers` / `inactiveSidecarWatchers`. Called
+    /// after any tab-set change (open, activate, close) so the watcher set
+    /// always matches "every tab except the active one." A watcher fire on
+    /// an inactive tab flips `hasUnread`; the TabBar renders a dot until
+    /// the user activates the tab.
+    private func syncInactiveWatchers() {
+        let activeID = activeTabID
+        let inactiveIDs = Set(tabs.filter { $0.id != activeID }.map { $0.id })
+
+        // Stop watchers for tabs that are no longer inactive (became active
+        // or were closed).
+        for id in Array(inactiveFileWatchers.keys) where !inactiveIDs.contains(id) {
+            inactiveFileWatchers[id]?.stop()
+            inactiveFileWatchers.removeValue(forKey: id)
+        }
+        for id in Array(inactiveSidecarWatchers.keys) where !inactiveIDs.contains(id) {
+            inactiveSidecarWatchers[id]?.stop()
+            inactiveSidecarWatchers.removeValue(forKey: id)
+        }
+
+        // Start watchers for inactive tabs that don't have one yet.
+        for tab in tabs where tab.id != activeID {
+            let url = tab.fileURL
+            guard url.isFileURL else { continue }
+            let id = tab.id
+            if inactiveFileWatchers[id] == nil,
+               DocumentKind.kind(for: url) != .pdf {
+                inactiveFileWatchers[id] = FileWatcher(url: url) { [weak self] in
+                    self?.markTabUnread(id)
+                }
+            }
+            if inactiveSidecarWatchers[id] == nil,
+               let sidecar = Self.sidecarURL(for: url),
+               sidecar.isFileURL {
+                inactiveSidecarWatchers[id] = FileWatcher(url: sidecar) { [weak self] in
+                    self?.markTabUnread(id)
+                }
+            }
+        }
+    }
+
+    /// Flip the unread flag on a non-active tab. No-op if the tab has
+    /// already been marked or no longer exists.
+    private func markTabUnread(_ tabID: UUID) {
+        guard let i = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        if !tabs[i].hasUnread {
+            tabs[i].hasUnread = true
         }
     }
 
@@ -658,6 +729,7 @@ final class DocumentStore: ObservableObject {
         editingAnnotationID = nil
         updateSelection(text: "", prefix: "", suffix: "")
         updateWatcher()  // no-op for remote URLs; clears any prior watcher
+        syncInactiveWatchers()
 
         let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
             guard let self else { return }
@@ -723,6 +795,7 @@ final class DocumentStore: ObservableObject {
         // No body watcher (no file to watch); sidecar watcher is wired up
         // inside updateWatcher when the sidecar URL resolves to a file.
         updateWatcher()
+        syncInactiveWatchers()
         resetReaderPrefsToUserDefaults()
         loadSidecar()
         snapshotActiveTab()
@@ -872,7 +945,11 @@ final class DocumentStore: ObservableObject {
 
         tabs.remove(at: i)
 
-        guard isActive else { return }
+        // The removed tab may have had an inactive watcher pair; drop it.
+        guard isActive else {
+            syncInactiveWatchers()
+            return
+        }
 
         if i < tabs.count {
             let target = tabs[i]
@@ -893,6 +970,7 @@ final class DocumentStore: ObservableObject {
             editingAnnotationID = nil
             updateSelection(text: "", prefix: "", suffix: "")
             updateWatcher()
+            syncInactiveWatchers()
         }
     }
 
@@ -925,7 +1003,14 @@ final class DocumentStore: ObservableObject {
         focusedAnnotation = nil
         editingAnnotationID = nil
         updateSelection(text: "", prefix: "", suffix: "")
+        // The tab is now visible — clear its unread dot. Must come before
+        // syncInactiveWatchers so that pass sees the just-activated tab
+        // out of the inactive set.
+        if let i = tabs.firstIndex(where: { $0.id == tab.id }), tabs[i].hasUnread {
+            tabs[i].hasUnread = false
+        }
         updateWatcher()
+        syncInactiveWatchers()
     }
 
     // MARK: - File browser

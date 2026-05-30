@@ -1406,9 +1406,18 @@ struct TabBarItem: View {
                 store.activate(tabID: tab.id)
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 10))
-                        .foregroundStyle(isActive ? c.accent : c.muted)
+                    // Unread indicator: a small filled dot for inactive
+                    // tabs whose file or sidecar changed externally.
+                    // Clears the moment the user activates the tab.
+                    if tab.hasUnread && !isActive {
+                        Circle()
+                            .fill(c.accent)
+                            .frame(width: 6, height: 6)
+                    } else {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 10))
+                            .foregroundStyle(isActive ? c.accent : c.muted)
+                    }
                     Text(displayTitle(for: tab.sourceURL ?? tab.fileURL))
                         .font(.system(size: 12, design: .serif))
                         .foregroundStyle(isActive ? c.text : c.muted)
