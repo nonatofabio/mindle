@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Annotations — Mindle</title>
+  <meta name="description" content="How Mindle stores and renders annotations — highlights, notes, reactions, replies, sidecar files, export.">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="doc-page">
+
+  <nav class="nav">
+    <div class="container nav-content">
+      <a href="index.html" class="nav-logo" aria-label="Mindle home">
+        <img src="assets/logo.svg" alt="" class="nav-logo-mark">
+        <span class="nav-logo-text">Mindle</span>
+      </a>
+      <div class="nav-links">
+        <a href="reading.html">Reading</a>
+        <a href="annotations.html" aria-current="page">Annotations</a>
+        <a href="agents.html">Agents</a>
+        <a href="editor.html">Editor</a>
+        <a href="keyboard.html">Keyboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="doc-content container">
+
+    <h1>Annotations</h1>
+    <p class="doc-lead">Highlights, notes, reactions, and replies — kept in a plain-text sidecar next to the file.</p>
+
+    <h2>Creating annotations</h2>
+    <ul>
+      <li><strong>Highlight Selection</strong> (<kbd>⌘⇧H</kbd>) — colour-mark the current selection. No note attached.</li>
+      <li><strong>Add Note to Selection…</strong> (<kbd>⌘⇧N</kbd>) — highlight and attach a note in the sidebar.</li>
+      <li>Both work on Markdown and on text-based PDF.</li>
+    </ul>
+    <p>The annotations sidebar opens automatically the first time you annotate. Toggle it manually with <kbd>⌘⇧A</kbd>.</p>
+
+    <h2>Threads and reactions</h2>
+    <p>Each annotation can carry a thread of replies, and each annotation or reply can carry reactions.</p>
+    <ul>
+      <li>Type into the card to add a reply.</li>
+      <li>Click the reaction button on a card or reply to add 👍, ❤️, or 😄. Click again to remove.</li>
+      <li>The card shows who added each reaction.</li>
+    </ul>
+
+    <h2>The sidecar file</h2>
+    <p>Mindle never modifies the source file to record annotations. Instead, annotations live in a hidden JSON sidecar beside the source:</p>
+    <pre><code>~/notes/paper.md
+~/notes/.paper.md.mindle.json</code></pre>
+    <p>URL-fetched and clipboard tabs use content-addressed sidecars under <code>~/Library/Application Support/Mindle/</code>.</p>
+    <p>The sidecar is plain JSON. It survives independently of Mindle and is intended to be readable, diffable, and version-controllable.</p>
+
+    <h2>Anchors and drift</h2>
+    <p>Annotations are addressed by anchor: the surrounding text plus an occurrence index in case the same phrase appears more than once. When the source file changes, Mindle re-anchors on next open; if a passage can no longer be located, the annotation is shown as orphaned in the sidebar but never lost.</p>
+
+    <h2>Identity</h2>
+    <p>Each annotation and reply records the author. On first launch Mindle prompts for a display name; you can change it later. Annotations created via the MCP socket record the agent's identifier separately — see <a href="agents.html">Agents</a>.</p>
+
+    <h2>Exporting</h2>
+    <p><strong>File → Export Annotations…</strong> (<kbd>⌘⇧E</kbd>) writes annotations to disk in one of two formats:</p>
+    <ul>
+      <li><strong>Markdown.</strong> Each annotation as a heading, with the highlighted passage as a blockquote and notes/replies as paragraphs underneath. Ready to paste into another document.</li>
+      <li><strong>JSON.</strong> The same shape as the sidecar — suited for programmatic consumption.</li>
+    </ul>
+
+    <h2>Selecting from a card</h2>
+    <p>Annotation card text is selectable. Click the jump-arrow on a card to scroll the reader to the highlighted range.</p>
+
+    <p class="doc-foot"><a href="index.html">← Back to Mindle</a></p>
+  </main>
+
+</body>
+</html>

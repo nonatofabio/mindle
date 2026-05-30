@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agents — Mindle</title>
+  <meta name="description" content="How agents collaborate with Mindle — MCP server, available tools, install for Claude Code and Claude Desktop.">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="doc-page">
+
+  <nav class="nav">
+    <div class="container nav-content">
+      <a href="index.html" class="nav-logo" aria-label="Mindle home">
+        <img src="assets/logo.svg" alt="" class="nav-logo-mark">
+        <span class="nav-logo-text">Mindle</span>
+      </a>
+      <div class="nav-links">
+        <a href="reading.html">Reading</a>
+        <a href="annotations.html">Annotations</a>
+        <a href="agents.html" aria-current="page">Agents</a>
+        <a href="editor.html">Editor</a>
+        <a href="keyboard.html">Keyboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="doc-content container">
+
+    <h1>Agents</h1>
+    <p class="doc-lead">Mindle exposes an MCP (Model Context Protocol) server so an agent can read your open files, see your annotations, and join the conversation.</p>
+
+    <h2>What it is</h2>
+    <p>Mindle runs a local Unix-socket MCP server while the app is open. The bundled <code>mindle-mcp</code> binary is a thin stdio shim that any MCP-aware client (Claude Code, Claude Desktop, Cursor, custom) can spawn to talk to Mindle.</p>
+    <ul>
+      <li>Socket path: <code>~/Library/Caches/local.fnp.mindle/mcp.sock</code></li>
+      <li>Helper: <code>/Applications/Mindle.app/Contents/MacOS/mindle-mcp</code></li>
+      <li>The socket only exists while Mindle is running. No network. No telemetry. No keys.</li>
+    </ul>
+
+    <h2>Install</h2>
+
+    <h3>Claude Code</h3>
+    <pre><code>claude mcp add mindle /Applications/Mindle.app/Contents/MacOS/mindle-mcp</code></pre>
+    <p>Restart Claude Code so it handshakes the new server.</p>
+
+    <h3>Claude Desktop</h3>
+    <p>Add this entry to <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>:</p>
+    <pre><code>{
+  "mcpServers": {
+    "mindle": {
+      "command": "/Applications/Mindle.app/Contents/MacOS/mindle-mcp"
+    }
+  }
+}</code></pre>
+    <p>Restart Claude Desktop.</p>
+
+    <h3>Other MCP clients</h3>
+    <p>Point the client at <code>/Applications/Mindle.app/Contents/MacOS/mindle-mcp</code> as an stdio MCP server. No arguments needed. The tool descriptions carry enough protocol guidance that vanilla agents run the collaboration loop without a custom skill.</p>
+
+    <h2>Tools</h2>
+    <table>
+      <thead>
+        <tr><th>Tool</th><th>Direction</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>list_open_files</code></td><td>read</td><td>Every file open in any Mindle window.</td></tr>
+        <tr><td><code>get_annotations(path)</code></td><td>read</td><td>Annotations and threads on a file.</td></tr>
+        <tr><td><code>get_collaborators(path)</code></td><td>read</td><td>Identity registry for a document.</td></tr>
+        <tr><td><code>create_annotation(path, text, prefix, suffix, note)</code></td><td>write</td><td>Open an agent-authored annotation on a passage.</td></tr>
+        <tr><td><code>comment_on_annotation(path, id, text)</code></td><td>write</td><td>Append a message to an annotation thread.</td></tr>
+        <tr><td><code>react_to_annotation(path, id, kind, message_id?)</code></td><td>write</td><td>Toggle a 👍 / ❤️ / 😄 reaction on an annotation or thread message.</td></tr>
+        <tr><td><code>clear_annotation(path, id, summary)</code></td><td>write</td><td>Mark an annotation done with a summary.</td></tr>
+        <tr><td><code>resolve_annotation(path, id, author?)</code></td><td>write</td><td>Move an annotation to resolved.</td></tr>
+        <tr><td><code>assign_annotation(path, id, assignee)</code></td><td>write</td><td>Hand an annotation to a named collaborator.</td></tr>
+        <tr><td><code>wait_for_annotation_event(timeout_seconds, since_event_id)</code></td><td>read</td><td>Long-poll for the next user event (created / replied / deleted).</td></tr>
+      </tbody>
+    </table>
+    <p>The server is read-only as far as the file system is concerned. File I/O stays in the agent's own tools — Mindle exposes only the annotation channel.</p>
+
+    <h2>The collaboration loop</h2>
+    <p>The intended pattern, with both Claude Code and Claude Desktop:</p>
+    <ol>
+      <li>Open the file in Mindle.</li>
+      <li>Ask the agent: <em>"watch my Mindle annotations and answer them"</em>.</li>
+      <li>The agent calls <code>wait_for_annotation_event</code> in a loop.</li>
+      <li>You annotate (<kbd>⌘⇧N</kbd> for a note, type, Return).</li>
+      <li>The agent wakes within a second, reads the surrounding context via <code>get_annotations</code>, and either replies in the thread (<code>comment_on_annotation</code>) or edits the file with its own tools and clears the annotation (<code>clear_annotation</code>).</li>
+    </ol>
+    <p>Agents can also originate annotations of their own with <code>create_annotation</code> — for example, to leave questions on a paper after a read-through.</p>
+
+    <h2>Identity</h2>
+    <p>Annotations and replies carry an author identifier. Human authors use the display name you set on first launch. Agent authors use whichever identifier their MCP client provides — these are kept distinct in the sidecar so an annotation's origin is preserved over time.</p>
+
+    <h2>Privacy</h2>
+    <ul>
+      <li>The socket only exists while Mindle is running.</li>
+      <li>No outbound network connections from Mindle's MCP server.</li>
+      <li>Annotations remain in the file's sidecar; nothing is uploaded.</li>
+      <li>The agent's own tools may make network calls — that's outside Mindle's scope.</li>
+    </ul>
+
+    <p class="doc-foot"><a href="index.html">← Back to Mindle</a></p>
+  </main>
+
+</body>
+</html>

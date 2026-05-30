@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reading — Mindle</title>
+  <meta name="description" content="How Mindle renders Markdown and PDF — typography, themes, layout, file browser, search.">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="doc-page">
+
+  <nav class="nav">
+    <div class="container nav-content">
+      <a href="index.html" class="nav-logo" aria-label="Mindle home">
+        <img src="assets/logo.svg" alt="" class="nav-logo-mark">
+        <span class="nav-logo-text">Mindle</span>
+      </a>
+      <div class="nav-links">
+        <a href="reading.html" aria-current="page">Reading</a>
+        <a href="annotations.html">Annotations</a>
+        <a href="agents.html">Agents</a>
+        <a href="editor.html">Editor</a>
+        <a href="keyboard.html">Keyboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="doc-content container">
+
+    <h1>Reading</h1>
+    <p class="doc-lead">Mindle renders Markdown and PDF in the same reader window, with the same theme and the same annotation model.</p>
+
+    <h2>Supported files</h2>
+    <ul>
+      <li>Markdown: <code>.md</code>, <code>.markdown</code>, <code>.mdown</code>, <code>.mkdn</code>, <code>.mkd</code>, <code>.txt</code>.</li>
+      <li>PDF: text-based PDFs only. Scanned PDFs render but cannot be annotated.</li>
+    </ul>
+
+    <h2>Opening a file</h2>
+    <ul>
+      <li><strong>Open…</strong> (<kbd>⌘O</kbd>) — open a local file in a new tab.</li>
+      <li><strong>Open URL…</strong> (<kbd>⌘⇧L</kbd>) — fetch a Markdown or PDF URL. PDFs are cached on disk so reopening is fast and offline.</li>
+      <li><strong>Open from Clipboard</strong> (<kbd>⌘⇧V</kbd>) — render the clipboard contents as a Markdown tab.</li>
+      <li>Drag a file onto the Mindle window or icon.</li>
+    </ul>
+    <p>If a file is already open, the existing tab is focused rather than duplicated.</p>
+
+    <h2>Markdown rendering</h2>
+    <p>GitHub-flavored Markdown, rendered locally — no network round-trip.</p>
+    <ul>
+      <li>Tables, task lists, footnotes, strikethrough.</li>
+      <li>Syntax-highlighted code blocks.</li>
+      <li>LaTeX math via KaTeX — inline (<code>$a^2 + b^2 = c^2$</code>) and display blocks.</li>
+      <li>Mermaid diagrams. Click to expand.</li>
+      <li>Emoji, nested lists, raw HTML.</li>
+      <li>YAML frontmatter is shown as a syntax-highlighted code block.</li>
+      <li>Inline images render; remote hosts are blocked by default.</li>
+    </ul>
+
+    <h2>PDF rendering</h2>
+    <p>PDFs render in continuous scroll mode, fit to the reader width. Pinch or use <kbd>⌘+</kbd> / <kbd>⌘-</kbd> to zoom. <kbd>⌘0</kbd> returns to fit-width.</p>
+    <p>Text selection, search, and annotations work the same as on Markdown.</p>
+
+    <h2>Typography</h2>
+    <p>The body is set in a serif at a comfortable size. Two controls beyond that:</p>
+    <ul>
+      <li><strong>Reading width.</strong> <em>View → Reading Width</em>, or <kbd>⌘1</kbd> / <kbd>⌘2</kbd> / <kbd>⌘3</kbd>. Three stops: narrow, medium, wide. The choice persists across files.</li>
+      <li><strong>Reader font.</strong> <em>View → Reader Font</em>. Two options: <em>Serif</em> (default) and <em>OpenDyslexic</em>. The choice persists across files.</li>
+      <li><strong>Font size.</strong> <kbd>⌘+</kbd> and <kbd>⌘-</kbd>. Range 0.75×–1.6×. Persists per file.</li>
+      <li><strong>Bionic Text.</strong> <em>View → Enable Bionic Text</em>. Bolds the leading letters of each word as a reading aid. Off by default.</li>
+    </ul>
+
+    <h2>Themes</h2>
+    <p>Three themes — Light, Sepia, Dark. Cycle with <kbd>⌘⇧T</kbd>. The theme is per-file and persists with the rest of the tab state.</p>
+
+    <h2>Tabs and windows</h2>
+    <ul>
+      <li><kbd>⌘O</kbd> opens a new tab in the front window.</li>
+      <li><kbd>⌘N</kbd> opens a new window with its own tab strip.</li>
+      <li><kbd>⌘W</kbd> closes the active tab; if only one tab is open, it closes the window.</li>
+      <li>Each window keeps its own tab order, theme, and font scale.</li>
+    </ul>
+
+    <h2>File browser</h2>
+    <p>A scoped sidebar tree of every Markdown and text file in the current folder. Toggle with <kbd>⌘⇧F</kbd>. The tree never escapes upward — when you open a file inside <code>~/notes/2026/</code>, the browser starts at <code>~/notes/2026/</code>, not at <code>~</code>.</p>
+
+    <h2>Find in document</h2>
+    <p><kbd>⌘F</kbd> opens the find bar. <kbd>⌘G</kbd> and <kbd>⌘⇧G</kbd> step between matches. Works in both Markdown and PDF tabs.</p>
+
+    <h2>Track changes</h2>
+    <p>When an external write changes the open file — vim, an agent, <code>git pull</code> — Mindle picks it up automatically. Small changes apply silently. Non-trivial changes render as a Word-style track-changes overlay with per-chunk accept and reject.</p>
+    <ul>
+      <li><strong>Keep All Changes</strong> — <kbd>⌘⌥⏎</kbd>.</li>
+      <li><strong>Revert All Changes</strong> — <kbd>⌘⌥⌫</kbd>.</li>
+      <li>Per-chunk controls appear inline on the overlay.</li>
+    </ul>
+
+    <h2>Export</h2>
+    <ul>
+      <li><strong>Export as PDF…</strong> (<kbd>⌘P</kbd>) — paginated Letter-sized PDF using the print stylesheet. Diff overlays and chrome are stripped.</li>
+      <li><strong>Export Annotations…</strong> (<kbd>⌘⇧E</kbd>) — Markdown or JSON. See <a href="annotations.html">Annotations</a>.</li>
+    </ul>
+
+    <p class="doc-foot"><a href="index.html">← Back to Mindle</a></p>
+  </main>
+
+</body>
+</html>

@@ -701,6 +701,165 @@ mark.mindle-hl.has-note {
   cursor: pointer;
 }
 
+/* ===== Doc pages (reading / annotations / agents / editor / keyboard) ===== */
+.doc-page { background: var(--bg); }
+
+.doc-page .nav-links a[aria-current="page"] {
+  color: var(--accent);
+}
+
+.doc-content {
+  max-width: 720px;
+  padding-top: 4rem;
+  padding-bottom: 6rem;
+}
+
+.doc-content h1 {
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  font-weight: 700;
+  margin-bottom: 1rem;
+  position: relative;
+  padding-bottom: 0.75rem;
+}
+.doc-content h1::after {
+  content: "";
+  position: absolute;
+  left: 0; bottom: 0;
+  width: 48px;
+  height: 3px;
+  background: var(--accent);
+}
+
+.doc-content .doc-lead {
+  font-size: 1.18rem;
+  line-height: 1.7;
+  color: var(--muted);
+  margin: 1.5rem 0 3rem;
+}
+
+.doc-content h2 {
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 2.75rem 0 0.75rem;
+  color: var(--text);
+}
+
+.doc-content h3 {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 1.75rem 0 0.5rem;
+  color: var(--text);
+}
+
+.doc-content p {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin: 0.85rem 0;
+  color: var(--text);
+}
+
+.doc-content ul, .doc-content ol {
+  padding-left: 1.4rem;
+  margin: 0.9rem 0;
+}
+.doc-content li {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin: 0.35rem 0;
+  color: var(--text);
+}
+.doc-content li > ul, .doc-content li > ol {
+  margin: 0.25rem 0;
+}
+
+.doc-content a {
+  color: var(--accent);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.18s ease;
+}
+.doc-content a:hover { border-bottom-color: var(--accent); }
+
+.doc-content strong { color: var(--text); }
+.doc-content em     { color: var(--text); }
+
+.doc-content pre {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.doc-content pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.doc-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.25rem 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-family: var(--font-serif);
+}
+.doc-content table tr { border-bottom: 1px solid var(--rule); }
+.doc-content table tr:last-child { border-bottom: 0; }
+.doc-content table th,
+.doc-content table td {
+  padding: 0.75rem 1rem;
+  font-size: 0.98rem;
+  text-align: left;
+  vertical-align: top;
+  color: var(--text);
+}
+.doc-content table th {
+  background: var(--bg-alt);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.doc-content table td:first-child { width: 200px; }
+
+.doc-content .kbd-table td:first-child {
+  background: var(--bg);
+  font-family: var(--font-mono);
+}
+
+.doc-content blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 0.25rem 0 0.25rem 1.1rem;
+  margin: 1.1rem 0;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.doc-foot {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+.doc-foot a {
+  color: var(--accent);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.18s ease;
+}
+.doc-foot a:hover { border-bottom-color: var(--accent); }
+
 /* ===== Responsive ===== */
 @media (max-width: 760px) {
   :root { --section-pad: 4rem; }

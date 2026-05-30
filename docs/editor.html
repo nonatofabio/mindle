@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editor — Mindle</title>
+  <meta name="description" content="The in-place Markdown editor — ⌘E to open, ⌘Return to save, drift detection.">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="doc-page">
+
+  <nav class="nav">
+    <div class="container nav-content">
+      <a href="index.html" class="nav-logo" aria-label="Mindle home">
+        <img src="assets/logo.svg" alt="" class="nav-logo-mark">
+        <span class="nav-logo-text">Mindle</span>
+      </a>
+      <div class="nav-links">
+        <a href="reading.html">Reading</a>
+        <a href="annotations.html">Annotations</a>
+        <a href="agents.html">Agents</a>
+        <a href="editor.html" aria-current="page">Editor</a>
+        <a href="keyboard.html">Keyboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="doc-content container">
+
+    <h1>Editor</h1>
+    <p class="doc-lead">A whole-document Markdown editor that swaps in for the reader when you want to fix a sentence in place.</p>
+
+    <h2>Opening</h2>
+    <p><strong>Edit → Edit Document…</strong> or <kbd>⌘E</kbd>. The reader pane is replaced by the editor; the rest of the window (tab strip, sidebar, theme) stays where it is.</p>
+    <p>The editor is enabled only for local Markdown files. URL-fetched tabs, clipboard tabs, and PDF tabs have no writable destination, so the menu item is disabled there.</p>
+
+    <h2>Source and preview</h2>
+    <p>The editor opens in <strong>Source</strong> mode by default — raw Markdown in a monospace font. The action row has three buttons:</p>
+    <ul>
+      <li><strong>Cancel.</strong> Discards the draft and returns to the reader. <kbd>Esc</kbd> also triggers it.</li>
+      <li><strong>Preview</strong> / <strong>Edit.</strong> Toggles between source and a rendered preview.</li>
+      <li><strong>Save.</strong> Writes the draft to disk and returns to the reader. <kbd>⌘Return</kbd> saves from either mode.</li>
+    </ul>
+
+    <h2>Preview fidelity</h2>
+    <p>Preview uses Foundation's <code>AttributedString(markdown:)</code> for an inline render. It covers paragraphs, headings, lists, bold/italic, inline code, and links — enough to verify formatting is right. It is lower fidelity than the reader pane:</p>
+    <ul>
+      <li>No syntax-highlighted code blocks.</li>
+      <li>No KaTeX math.</li>
+      <li>No Mermaid diagrams.</li>
+      <li>No images.</li>
+      <li>Theme typography is not exact.</li>
+    </ul>
+    <p>For a full-fidelity preview, save and look at the reader pane.</p>
+
+    <h2>Saving</h2>
+    <p>Save writes the draft atomically to the file's UTF-8 path. The file watcher would normally treat this as an external change; the editor short-circuits that loop so save does not trigger a diff overlay against itself.</p>
+
+    <h2>Drift detection</h2>
+    <p>If the file changes externally — an agent writes, another app saves, <code>git pull</code> — while you are editing, the editor detects the divergence at save time. You get a three-way prompt:</p>
+    <ul>
+      <li><strong>Save My Version.</strong> Proceed with the draft, overwriting the external change.</li>
+      <li><strong>Discard My Edits.</strong> Close the editor; the reader picks up the new content the watcher already pulled in.</li>
+      <li><strong>Keep Editing.</strong> Stay in the editor so the two versions can be merged by hand. Copy the new content from elsewhere, edit the draft to reflect, save.</li>
+    </ul>
+    <p>The check uses a content hash captured at open time, so detection is exact regardless of how the file changed.</p>
+
+    <h2>Scope</h2>
+    <p>The editor is intentionally small. It is not a replacement for a Markdown writing app — there is no toolbar, no live render, no syntax highlighting, no autocomplete. The goal is the smallest surface that lets you fix a thing in place without switching apps.</p>
+
+    <p class="doc-foot"><a href="index.html">← Back to Mindle</a></p>
+  </main>
+
+</body>
+</html>
