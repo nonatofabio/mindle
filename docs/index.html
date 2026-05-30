@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mindle — A quiet place to read Markdown</title>
-  <meta name="description" content="A native macOS Markdown reader. Serif, warm, local. No Electron, no subscriptions, no network.">
+  <title>Mindle — A quiet place to read, annotate, and think</title>
+  <meta name="description" content="A native macOS reader for Markdown and PDF. Local, lettered, and collaborative. No Electron, no subscriptions, no network.">
   <link rel="canonical" href="https://nonatofabio.github.io/mindle/">
 
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
@@ -12,8 +12,8 @@
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://nonatofabio.github.io/mindle/">
-  <meta property="og:title" content="Mindle — A quiet place to read Markdown">
-  <meta property="og:description" content="A native macOS Markdown reader. Serif, warm, local.">
+  <meta property="og:title" content="Mindle — A quiet place to read, annotate, and think">
+  <meta property="og:description" content="A native macOS reader for Markdown and PDF. Local, lettered, and collaborative.">
   <meta property="og:image" content="https://nonatofabio.github.io/mindle/assets/logo.svg">
 
   <!-- Satoshi reserved for the {fnp} signature -->
@@ -30,8 +30,7 @@
       </a>
       <div class="nav-links">
         <a href="#preview">Read</a>
-        <a href="#features">Features</a>
-        <a href="#shortcuts">Shortcuts</a>
+        <a href="#docs">Docs</a>
         <a href="#install">Install</a>
         <a href="https://github.com/nonatofabio/mindle" target="_blank" rel="noopener">GitHub</a>
       </div>
@@ -42,8 +41,8 @@
     <div class="container hero-content">
       <img src="assets/logo.svg" alt="" class="hero-logo" id="hero-logo">
       <h1>Mindle</h1>
-      <p class="tagline">A quiet place to read Markdown.</p>
-      <p class="subtitle">A native macOS reader for your <code>.md</code> files. Serif, warm, local.</p>
+      <p class="tagline">A quiet place to read, annotate, and think.</p>
+      <p class="subtitle">A native macOS reader for Markdown and PDF.<br>Local, lettered, and collaborative.</p>
       <div class="hero-links">
         <a href="https://github.com/nonatofabio/mindle/releases/latest/download/Mindle.dmg" class="btn btn-primary">Download for macOS</a>
         <a href="https://github.com/nonatofabio/mindle" class="btn btn-secondary">View on GitHub</a>
@@ -83,82 +82,24 @@
     </div>
   </section>
 
-  <section id="features" class="section features">
+  <section id="docs" class="section docs">
     <div class="container">
-      <h2>Features</h2>
-      <div class="feature-grid">
-
-        <div class="feature-card">
-          <h3>Reads alongside you</h3>
-          <p>External edits to the open file — vim, an agent, anything — pick up automatically. When the change is non-trivial, Mindle renders it as a Word-style track-changes overlay you can <kbd>✓ Keep</kbd> or <kbd>✗ Revert</kbd> per chunk.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Highlight &amp; Annotate</h3>
-          <p>Select any passage, press <kbd>⌘⇧H</kbd> to highlight or <kbd>⌘⇧N</kbd> to attach a note. Persisted per-file in a hidden sidecar — nothing leaves your machine.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Full GitHub-Flavored Markdown</h3>
-          <p>Tables, task lists, footnotes, strikethrough, syntax-highlighted code, emoji, nested lists, raw HTML. Rendered locally — no network round-trip.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Math &amp; diagrams</h3>
-          <p>LaTeX math via <a href="https://katex.org">KaTeX</a> — inline (<code>$a^2 + b^2 = c^2$</code>) and display blocks. Mermaid diagrams render inline; click to expand. All offline.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Tabs &amp; windows</h3>
-          <p><kbd>⌘O</kbd> opens a file in a new tab; <kbd>⌘N</kbd> pops a fresh window. Each window keeps its own tab strip and reader state.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>PDF export</h3>
-          <p><kbd>⌘P</kbd> produces a paginated Letter-sized PDF with print-styled typography. Diffs and chrome stripped — only the accepted text survives.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Find in Document</h3>
-          <p>Live search with match count and navigation. <kbd>⌘F</kbd> opens the bar, <kbd>⌘G</kbd> and <kbd>⌘⇧G</kbd> step between matches.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>File Browser</h3>
-          <p>A scoped sidebar tree of every <code>.md</code> and <code>.txt</code> in your current folder. Never escapes upward. Toggle with <kbd>⌘⇧F</kbd>.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Themes &amp; typography</h3>
-          <p>Light, Sepia, Dark. Cycle with <kbd>⌘⇧T</kbd>. Scale the serif body with <kbd>⌘+</kbd> / <kbd>⌘-</kbd>. The theme sticks per-file.</p>
-        </div>
-
-      </div>
-      <p class="features-foot">Plus opt-in auto-update via <a href="https://sparkle-project.org">Sparkle</a>, image rendering with remote-host blocking, YAML frontmatter as syntax-highlighted code, and signed-and-notarized DMGs on every release.</p>
-    </div>
-  </section>
-
-  <section id="shortcuts" class="section shortcuts">
-    <div class="container">
-      <h2>Keyboard</h2>
-      <table class="shortcut-table">
-        <tbody>
-          <tr><td><kbd>⌘O</kbd></td><td>Open a file (adds a tab)</td></tr>
-          <tr><td><kbd>⌘N</kbd></td><td>New window</td></tr>
-          <tr><td><kbd>⌘W</kbd></td><td>Close active tab (or window when only one tab is open)</td></tr>
-          <tr><td><kbd>⌘F</kbd></td><td>Find in document</td></tr>
-          <tr><td><kbd>⌘G</kbd> / <kbd>⌘⇧G</kbd></td><td>Next / previous match</td></tr>
-          <tr><td><kbd>⌘P</kbd></td><td>Export as PDF</td></tr>
-          <tr><td><kbd>⌘⇧E</kbd></td><td>Export annotations (Markdown or JSON)</td></tr>
-          <tr><td><kbd>⌘⇧H</kbd></td><td>Highlight selection</td></tr>
-          <tr><td><kbd>⌘⇧N</kbd></td><td>Add note to selection</td></tr>
-          <tr><td><kbd>⌘⇧A</kbd></td><td>Toggle annotations sidebar</td></tr>
-          <tr><td><kbd>⌘⇧F</kbd></td><td>Toggle files sidebar</td></tr>
-          <tr><td><kbd>⌘⇧T</kbd></td><td>Cycle theme (light / sepia / dark)</td></tr>
-          <tr><td><kbd>⌘+</kbd> / <kbd>⌘-</kbd></td><td>Increase / decrease font size</td></tr>
-          <tr><td><kbd>⌘⌥⏎</kbd> / <kbd>⌘⌥⌫</kbd></td><td>Keep / revert all in-flight changes</td></tr>
-        </tbody>
-      </table>
+      <p class="docs-prose">
+        Mindle reads what most people read: Markdown, and PDFs of articles.
+        It lets you mark a passage, leave a note, answer a note. Your
+        annotations live next to the file, in plain text. When you'd like
+        company, an agent — anything that speaks the Model Context Protocol
+        — can join you in the margin and leave a note of its own. A small
+        editor handles the moments you'd rather fix a sentence than wish
+        you'd fixed it. Nothing leaves your machine.
+      </p>
+      <ul class="docs-index">
+        <li><a href="reading.html"><span class="docs-index-label">Reading</span><span class="docs-index-arrow" aria-hidden="true">→</span></a></li>
+        <li><a href="annotations.html"><span class="docs-index-label">Annotations</span><span class="docs-index-arrow" aria-hidden="true">→</span></a></li>
+        <li><a href="agents.html"><span class="docs-index-label">Agents</span><span class="docs-index-arrow" aria-hidden="true">→</span></a></li>
+        <li><a href="editor.html"><span class="docs-index-label">Editor</span><span class="docs-index-arrow" aria-hidden="true">→</span></a></li>
+        <li><a href="keyboard.html"><span class="docs-index-label">Keyboard</span><span class="docs-index-arrow" aria-hidden="true">→</span></a></li>
+      </ul>
     </div>
   </section>
 

@@ -261,10 +261,13 @@ kbd {
 
 /* Alternating band colors */
 .preview   { background: var(--bg-alt); }
+.docs      { background: var(--bg); }
+.install   { background: var(--bg-alt); }
+.footer    { background: var(--bg); }
+
+/* Legacy bands retained for older anchors */
 .features  { background: var(--bg); }
 .shortcuts { background: var(--bg-alt); }
-.install   { background: var(--bg); }
-.footer    { background: var(--bg-alt); }
 
 /* ===== Reader preview ===== */
 .reader-mock {
@@ -327,7 +330,50 @@ mark.mindle-hl.has-note {
   margin-bottom: 0.4rem;
 }
 
-/* ===== Features grid ===== */
+/* ===== Docs index (replaces Features + Shortcuts on landing) ===== */
+.docs .container { max-width: 720px; }
+
+.docs-prose {
+  font-family: var(--font-serif);
+  font-size: 1.18rem;
+  line-height: 1.85;
+  color: var(--text);
+  margin: 0 auto 4.5rem;
+  text-align: left;
+}
+
+.docs-index {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.docs-index li { border-bottom: 1px solid var(--rule); }
+.docs-index a {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 1.15rem 0.25rem;
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: var(--text);
+  transition: color 0.18s ease, padding-left 0.18s ease;
+}
+.docs-index a:hover {
+  color: var(--accent);
+  padding-left: 0.85rem;
+}
+.docs-index-arrow {
+  font-size: 0.95em;
+  color: var(--muted);
+  transition: transform 0.18s ease, color 0.18s ease;
+}
+.docs-index a:hover .docs-index-arrow {
+  color: var(--accent);
+  transform: translateX(3px);
+}
+
+/* ===== Features grid (legacy — markup removed from landing) ===== */
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
