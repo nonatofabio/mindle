@@ -896,9 +896,13 @@
     searchState.total = 0;
 
     if (annotations.length) {
-      const annoMap = buildTextMap(doc);
+      // Rebuild the text map after each annotation: highlightInTextMap
+      // mutates text-node values when it wraps a range in <mark>, so any
+      // later annotation that targets the same paragraph would otherwise
+      // look up positions in a truncated node and silently bail (#32).
       for (const ann of annotations) {
         try {
+          const annoMap = buildTextMap(doc);
           const marks = highlightInTextMap(annoMap, ann);
           if (marks.length) currentMarkSets.set(ann.id, marks);
         } catch (_) {}
