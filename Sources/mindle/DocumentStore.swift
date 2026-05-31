@@ -1003,14 +1003,33 @@ final class DocumentStore: ObservableObject {
         focusedAnnotation = nil
         editingAnnotationID = nil
         updateSelection(text: "", prefix: "", suffix: "")
-        // The tab is now visible — clear its unread dot. Must come before
-        // syncInactiveWatchers so that pass sees the just-activated tab
-        // out of the inactive set.
-        if let i = tabs.firstIndex(where: { $0.id == tab.id }), tabs[i].hasUnread {
-            tabs[i].hasUnread = false
+        // The tab is now visible — clear its unread dot. Keep the prior
+        // value so we know to refresh from disk a few lines down.
+        let hadUnread: Bool
+        if let i = tabs.firstIndex(where: { $0.id == tab.id }) {
+            hadUnread = tabs[i].hasUnread
+            if tabs[i].hasUnread {
+                tabs[i].hasUnread = false
+            }
+        } else {
+            hadUnread = false
         }
         updateWatcher()
         syncInactiveWatchers()
+        // If an inactive watcher flipped `hasUnread`, the snapshot we just
+        // restored is stale — the external change landed after the tab
+        // was snapshotted. Re-run the active-tab reload paths now so the
+        // user sees the actual file content and the diff overlay can
+        // surface the change. PDFs skip the body reload (PDFView watches
+        // its URL directly), but every kind re-reads the sidecar in case
+        // annotation traffic was the trigger.
+        if hadUnread {
+            if DocumentKind.kind(for: tab.fileURL) != .pdf {
+                reloadFromDisk()
+            }
+            loadSidecar()
+            snapshotActiveTab()
+        }
     }
 
     // MARK: - File browser
