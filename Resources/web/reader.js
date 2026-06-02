@@ -1091,7 +1091,97 @@
       attachDiffHandlers();
       injectDiffBanner();
     }
+
+    // Heading spine: collect h1–h6 positions and publish them. Has to
+    // run after applyAll's mutations settle so offsetTop reflects the
+    // final layout (annotations, math, mermaid all change vertical
+    // positions). markdown-it-anchor is enabled, so each heading already
+    // carries an id we can use for scroll-into-view targeting.
+    publishHeadings();
+    publishScrollState();
   }
+
+  // -------- Heading spine --------
+
+  // Cached so the scroll handler doesn't re-walk the DOM every frame.
+  // Recomputed by publishHeadings() on every render (and on resize, since
+  // wrapping changes heading offsets).
+  let headingCache = [];
+
+  function publishHeadings() {
+    const nodes = doc.querySelectorAll("h1, h2, h3, h4, h5, h6");
+    headingCache = [];
+    const out = [];
+    for (const n of nodes) {
+      // Skip headings that are inside a diff "removed" block — they're
+      // stricken-through history, not navigable structure.
+      if (n.closest('[data-diff="removed"]')) continue;
+      const id = n.id || "";
+      const text = (n.textContent || "").trim();
+      if (!text) continue;
+      const top = Math.max(0, Math.round(n.getBoundingClientRect().top + window.scrollY));
+      const level = parseInt(n.tagName.slice(1), 10) || 1;
+      headingCache.push({ id, top });
+      out.push({ id, text, level, top });
+    }
+    postToSwift("headings", { headings: out });
+  }
+
+  function publishScrollState() {
+    const scrollTop = window.scrollY;
+    const viewportHeight = window.innerHeight;
+    const contentHeight = Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight
+    );
+
+    // Active heading: the last one whose top is above the reading "anchor"
+    // line at one third of the viewport. That feels right while scrolling
+    // — a heading lights up when its body has comfortably entered view,
+    // not the moment its first pixel does.
+    const anchorY = scrollTop + viewportHeight * 0.33;
+    let active = -1;
+    for (let i = 0; i < headingCache.length; i++) {
+      if (headingCache[i].top <= anchorY) active = i; else break;
+    }
+    if (active < 0 && headingCache.length > 0) active = 0;
+
+    postToSwift("scrollState", {
+      scrollTop,
+      viewportHeight,
+      contentHeight,
+      activeIndex: active
+    });
+  }
+
+  // Coalesce scroll/resize bursts into a single rAF tick — WKWebView
+  // fires scroll events at full 60Hz and we don't need more than that.
+  let scrollPending = false;
+  function onScrollOrResize() {
+    if (scrollPending) return;
+    scrollPending = true;
+    requestAnimationFrame(() => {
+      scrollPending = false;
+      // Resize can shift heading offsets; cheap to recompute.
+      if (headingCache.length) {
+        for (const h of headingCache) {
+          const el = h.id ? document.getElementById(h.id) : null;
+          if (el) h.top = Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY));
+        }
+      }
+      publishScrollState();
+    });
+  }
+  window.addEventListener("scroll", onScrollOrResize, { passive: true });
+  window.addEventListener("resize", onScrollOrResize);
+
+  window.mindleScrollToHeading = function (id) {
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    const target = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 24);
+    window.scrollTo({ top: target, behavior: "smooth" });
+  };
 
   // -------- Bionic Text --------
 

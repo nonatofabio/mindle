@@ -252,6 +252,15 @@ struct ReaderPane: View {
                 } else {
                     WebReaderView()
                         .background(c.background)
+                        .overlay(alignment: .trailing) {
+                            // Floating heading spine — ticks always, labels
+                            // on hover. Self-hides when there are fewer
+                            // than two headings to nav between, so short
+                            // documents don't get a useless rail.
+                            if store.spineHeadings.count >= 2 {
+                                HeadingSpineOverlay()
+                            }
+                        }
                 }
             case .pdf:
                 PDFReaderView()
@@ -283,6 +292,192 @@ struct ReaderPane: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+    }
+}
+
+/// Floating heading spine on the right edge of the markdown reader.
+/// Collapsed: a thin column of ticks (one per heading) plus an active
+/// dot at the current scroll position. Hovered: expands leftward into
+/// a labeled outline; clicking a row scrolls to that heading.
+///
+/// The vertical mapping uses the heading's pixel offset within the
+/// rendered article (`top / contentHeight`) so the spine reflects the
+/// document's actual structure rather than just an even split — long
+/// chapters get more space, short ones less.
+private struct HeadingSpineOverlay: View {
+    @EnvironmentObject var store: DocumentStore
+    @State private var isHovering: Bool = false
+    @State private var hoveredIndex: Int? = nil
+
+    /// Visible width of the always-on tick column. Also drives the
+    /// overlay's hit area when collapsed — narrow enough that it can't
+    /// accidentally swallow clicks meant for the article underneath.
+    private let collapsedWidth: CGFloat = 22
+    /// Width of the labeled panel that fades in on hover.
+    private let panelWidth: CGFloat = 220
+    /// Vertical inset on top/bottom — keeps ticks off the very edges so
+    /// labels at the extremes don't crash into the rounded corners.
+    private let verticalInset: CGFloat = 28
+
+    var body: some View {
+        // Two stacked layers. Bottom: the spine column (always visible,
+        // narrow, catches hover). Top: the labels panel (only when
+        // hovering). The panel is wider but lives in an .overlay so it
+        // doesn't reserve layout space — the article underneath sees
+        // only the spine's collapsed width when the spine is idle.
+        spineColumn
+            .overlay(alignment: .topTrailing) {
+                if isHovering {
+                    labelsPanel
+                        .transition(.opacity)
+                }
+            }
+            .padding(.trailing, 8)
+    }
+
+    private var spineColumn: some View {
+        let c = store.theme.colors
+        let headings = store.spineHeadings
+        let active = store.spineScroll.activeIndex
+        return GeometryReader { proxy in
+            let track = max(0, proxy.size.height - verticalInset * 2)
+            let positions = trackPositions(in: track, headings: headings)
+            ZStack(alignment: .topTrailing) {
+                ForEach(Array(headings.enumerated()), id: \.element.id) { idx, h in
+                    Rectangle()
+                        .fill(idx == active ? c.accent : c.muted.opacity(0.5))
+                        .frame(width: tickLength(for: h.level), height: idx == active ? 2 : 1)
+                        .offset(x: -6, y: positions[idx] - (idx == active ? 1 : 0.5))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .allowsHitTesting(false)
+                }
+                if active >= 0, active < positions.count {
+                    Circle()
+                        .fill(c.accent)
+                        .frame(width: 5, height: 5)
+                        .offset(x: -2.5, y: positions[active] - 2.5)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .allowsHitTesting(false)
+                }
+            }
+            .padding(.vertical, verticalInset)
+        }
+        .frame(width: collapsedWidth)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering }
+            if !hovering { hoveredIndex = nil }
+        }
+    }
+
+    /// Compact label panel — naturally sized to its content, rendered
+    /// to the LEFT of the spine column when hovering. Uses a VStack of
+    /// Buttons rather than the spine's y-mapped tick layout: that keeps
+    /// the panel small and gives reliable hit-testing (offset tricks +
+    /// contentShape break SwiftUI hit detection on macOS).
+    private var labelsPanel: some View {
+        let c = store.theme.colors
+        let headings = store.spineHeadings
+        let active = store.spineScroll.activeIndex
+        return VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(headings.enumerated()), id: \.element.id) { idx, h in
+                Button {
+                    store.scrollToHeading(id: h.id)
+                } label: {
+                    HStack(spacing: 8) {
+                        // Active-row dot mirrors the spine's accent dot
+                        // so the connection between the two reads even
+                        // without aligning y-positions exactly.
+                        Circle()
+                            .fill(idx == active ? c.accent : Color.clear)
+                            .frame(width: 5, height: 5)
+                        Text(h.text)
+                            .font(.system(size: fontSize(for: h.level),
+                                          weight: idx == active ? .semibold : .regular))
+                            .foregroundStyle(idx == active ? c.accent : c.text)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.leading, indent(for: h.level))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 10)
+                    .frame(width: panelWidth - 16, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(hoveredIndex == idx ? c.muted.opacity(0.12) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { hoveredIndex = $0 ? idx : (hoveredIndex == idx ? nil : hoveredIndex) }
+            }
+        }
+        .padding(8)
+        // fixedSize on vertical lets the VStack hug its content height
+        // instead of stretching to fill the spine's full track. Width
+        // stays fixed at panelWidth so long titles wrap predictably.
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: panelWidth, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(c.surface.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(c.rule.opacity(0.5), lineWidth: 0.5)
+                )
+                .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 2)
+        )
+        // Slide left of the spine so the two read as connected. The
+        // outer overlay is `.topTrailing`, so we shift left by the
+        // spine's width plus a small gap.
+        .offset(x: -(collapsedWidth + 4), y: verticalInset - 6)
+        .onHover { hovering in
+            // Keep the panel mounted while the cursor is over it —
+            // without this, hovering off the spine into the panel
+            // would collapse it before any click registered.
+            if hovering { isHovering = true }
+            else {
+                withAnimation(.easeOut(duration: 0.15)) { isHovering = false }
+                hoveredIndex = nil
+            }
+        }
+    }
+
+    private func fontSize(for level: Int) -> CGFloat {
+        switch level {
+        case 1: return 12
+        case 2: return 11.5
+        case 3: return 11
+        default: return 10.5
+        }
+    }
+
+    private func indent(for level: Int) -> CGFloat {
+        CGFloat(min(max(level - 1, 0), 4)) * 10
+    }
+
+    /// Vertical position of each tick inside the track. Maps the
+    /// heading's document offset (`top`) to a fraction of the rendered
+    /// content; falls back to an even split when content height is
+    /// unknown (first frame after load).
+    private func trackPositions(in trackHeight: CGFloat, headings: [SpineHeading]) -> [CGFloat] {
+        guard !headings.isEmpty, trackHeight > 0 else { return [] }
+        let content = store.spineScroll.contentHeight
+        if content <= 0 {
+            let step = headings.count == 1 ? 0 : trackHeight / CGFloat(headings.count - 1)
+            return (0..<headings.count).map { CGFloat($0) * step }
+        }
+        return headings.map { h in
+            let frac = min(max(h.top / content, 0), 1)
+            return frac * trackHeight
+        }
+    }
+
+    private func tickLength(for level: Int) -> CGFloat {
+        // H1 → ~11pt, H6 → ~3pt. Linear interpolation between.
+        let clamped = min(max(level, 1), 6)
+        return 13 - CGFloat(clamped) * 1.6
     }
 }
 

@@ -177,6 +177,28 @@ struct FileNode: Identifiable, Equatable {
     let children: [FileNode]?   // nil = leaf file; non-nil = directory
 }
 
+/// One heading entry surfaced by the reader for the floating spine.
+/// `top` is in CSS pixels relative to the document — Swift maps it to
+/// a y-fraction by dividing by `SpineScrollState.contentHeight`.
+struct SpineHeading: Equatable, Identifiable {
+    let id: String
+    let text: String
+    let level: Int
+    let top: CGFloat
+}
+
+/// Scroll geometry for the floating heading spine.
+struct SpineScrollState: Equatable {
+    let scrollTop: CGFloat
+    let viewportHeight: CGFloat
+    let contentHeight: CGFloat
+    let activeIndex: Int
+
+    static let empty = SpineScrollState(
+        scrollTop: 0, viewportHeight: 0, contentHeight: 0, activeIndex: -1
+    )
+}
+
 /// One open document inside a window. Active-tab state still lives in
 /// the window-scoped @Published vars (`fileURL`, `rawText`, `annotations`,
 /// `lastSyncedText`) so all existing features keep working untouched;
@@ -314,6 +336,13 @@ final class DocumentStore: ObservableObject {
     @Published private(set) var searchCurrent: Int = 0   // 1-based; 0 = no active match
     @Published var searchNextRequestedAt: Date? = nil
     @Published var searchPrevRequestedAt: Date? = nil
+
+    // Heading spine — populated by the markdown reader. PDF tabs leave
+    // both empty, which hides the overlay.
+    @Published private(set) var spineHeadings: [SpineHeading] = []
+    @Published private(set) var spineScroll: SpineScrollState = .empty
+    @Published var scrollToHeadingRequestedAt: Date? = nil
+    @Published private(set) var scrollToHeadingID: String = ""
 
     // Selection from the web view
     @Published private(set) var selectionText: String = ""
@@ -1129,6 +1158,8 @@ final class DocumentStore: ObservableObject {
             focusedAnnotation = nil
             editingAnnotationID = nil
             updateSelection(text: "", prefix: "", suffix: "")
+            spineHeadings = []
+            spineScroll = .empty
             updateWatcher()
             syncInactiveWatchers()
         }
@@ -1164,6 +1195,11 @@ final class DocumentStore: ObservableObject {
         focusedAnnotation = nil
         editingAnnotationID = nil
         updateSelection(text: "", prefix: "", suffix: "")
+        // Heading spine starts empty — reader.js republishes when the
+        // new tab's markdown finishes rendering. Without this, the
+        // outgoing tab's headings would flash on the incoming one.
+        spineHeadings = []
+        spineScroll = .empty
         // The tab is now visible — clear its unread dot. Keep the prior
         // value so we know to refresh from disk a few lines down.
         let hadUnread: Bool
@@ -1867,6 +1903,32 @@ final class DocumentStore: ObservableObject {
     func updateSearchResult(total: Int, current: Int) {
         searchTotal = total
         searchCurrent = current
+    }
+
+    // MARK: - Heading spine
+
+    /// Headings published by the markdown reader after each render. The
+    /// floating spine overlay reads this to draw ticks; clicking a tick
+    /// asks the reader to scroll to the heading's id.
+    func updateHeadings(_ list: [SpineHeading]) {
+        // Drop publishes that match what we already have — ObservableObject
+        // would otherwise churn the overlay on every render.
+        if list == spineHeadings { return }
+        spineHeadings = list
+    }
+
+    /// Latest scroll fraction + active-heading index from the reader.
+    /// Drives the active dot and the auto-revealed label in the spine.
+    func updateScrollState(_ state: SpineScrollState) {
+        spineScroll = state
+    }
+
+    /// Bumped to ask the WebReader coordinator to scroll the WKWebView
+    /// to the given heading id. Read-once token: `lastScrollToHeadingAt`
+    /// in the coordinator dedupes repeats.
+    func scrollToHeading(id: String) {
+        scrollToHeadingID = id
+        scrollToHeadingRequestedAt = Date()
     }
 
     // MARK: - Persistence
