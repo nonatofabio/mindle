@@ -68,6 +68,7 @@
         <tr><td><code>list_open_files</code></td><td>read</td><td>Every file open in any Mindle window.</td></tr>
         <tr><td><code>get_annotations(path)</code></td><td>read</td><td>Annotations and threads on a file.</td></tr>
         <tr><td><code>get_collaborators(path)</code></td><td>read</td><td>Identity registry for a document.</td></tr>
+        <tr><td><code>open_file(path, focus_app?)</code></td><td>write</td><td>Open a file in Mindle (or activate an existing tab). Defaults to opening silently in the background.</td></tr>
         <tr><td><code>create_annotation(path, text, prefix, suffix, note)</code></td><td>write</td><td>Open an agent-authored annotation on a passage.</td></tr>
         <tr><td><code>comment_on_annotation(path, id, text)</code></td><td>write</td><td>Append a message to an annotation thread.</td></tr>
         <tr><td><code>react_to_annotation(path, id, kind, message_id?)</code></td><td>write</td><td>Toggle a 👍 / ❤️ / 😄 reaction on an annotation or thread message.</td></tr>

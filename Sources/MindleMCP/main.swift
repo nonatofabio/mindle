@@ -268,6 +268,26 @@ struct MindleMCP {
                 ]
             ],
             [
+                "name": "open_file",
+                "description": "Open a file in Mindle. If the file is already open in any window, the existing tab is activated; otherwise a new tab is added in the most-recently-active window. Use this to bring a file into the user's attention so you can subsequently annotate it or watch for the user's annotations. Defaults to opening silently in the background — pass focus_app:true to also bring Mindle to the foreground (useful when you specifically want the user to look at the file now).",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "path": [
+                            "type": "string",
+                            "description": "Absolute path to a local file. Markdown (.md, .markdown, .txt) and text-based PDF (.pdf) are both supported."
+                        ],
+                        "focus_app": [
+                            "type": "boolean",
+                            "description": "Bring Mindle to the foreground when opening. Default false — leaves Mindle in the background so you don't interrupt the user.",
+                            "default": false
+                        ]
+                    ],
+                    "required": ["path"],
+                    "additionalProperties": false
+                ]
+            ],
+            [
                 "name": "wait_for_annotation_event",
                 "description": "Long-poll for the next user annotation event in Mindle. Use this to run an ambient collaboration loop: the user annotates a file in Mindle, you wake up here with the event payload, address it (read context, edit the file, comment_on_annotation or clear_annotation as appropriate), then call wait_for_annotation_event again. Wakeup events are: a new annotation, a user reply in an existing thread, an annotation deletion. Your own mutations (clear_annotation, comment_on_annotation, create_annotation) never wake you. Before starting the loop, call list_open_files and get_annotations on each open file so you have baseline context. The result includes 'events' (possibly empty if the timeout elapsed — call again), 'last_event_id' (pass back as since_event_id), and 'gap' (true if events were dropped between calls — rebaseline with get_annotations).",
                 "inputSchema": [
@@ -422,6 +442,23 @@ struct MindleMCP {
             ) { resp in
                 let newID = (resp["id"] as? String) ?? "?"
                 return textContent("Opened annotation \(newID) on \(path).")
+            }
+
+        case "open_file":
+            guard let path = arguments["path"] as? String, !path.isEmpty else {
+                return errorContent("missing required argument: path")
+            }
+            let focusApp = (arguments["focus_app"] as? Bool) ?? false
+            return callMindle(op: "open_file", body: [
+                "path": path,
+                "focus_app": focusApp
+            ]) { resp in
+                let focused = (resp["focused"] as? Bool) ?? false
+                let openedPath = (resp["path"] as? String) ?? path
+                if focused {
+                    return textContent("Activated existing tab for \(openedPath).")
+                }
+                return textContent("Opened \(openedPath) in a new tab.")
             }
 
         case "wait_for_annotation_event":

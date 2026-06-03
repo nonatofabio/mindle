@@ -228,6 +228,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// MCP-side: open a file at `path` in Mindle. If any window already
+    /// has the file open, activates that tab. Otherwise opens a new tab
+    /// in the most-recently-active store. Returns nil if the file
+    /// doesn't exist or there's no window to host the tab (e.g. all
+    /// windows closed). When `focusApp` is true, brings Mindle to the
+    /// foreground; otherwise the new tab opens silently in the
+    /// background so an agent prepping a working set doesn't steal the
+    /// user's focus.
+    func openFile(path: String, focusApp: Bool) -> (focused: Bool, url: URL)? {
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let canonical = url.canonicalPath
+        registeredStores.removeAll { $0.store == nil }
+
+        // Already open in some window? Activate the existing tab there.
+        for ref in registeredStores {
+            guard let s = ref.store else { continue }
+            if let existing = s.tabs.first(where: { $0.fileURL.canonicalPath == canonical }) {
+                s.activate(tabID: existing.id)
+                if focusApp { NSApp.activate(ignoringOtherApps: true) }
+                return (focused: true, url: existing.fileURL)
+            }
+        }
+
+        // Not open anywhere — pick a host store. Prefer the
+        // most-recently-active one; fall back to the first registered.
+        let target = activeStore ?? registeredStores.first?.store
+        guard let store = target else { return nil }
+        store.open(url: url)
+        if focusApp { NSApp.activate(ignoringOtherApps: true) }
+        return (focused: false, url: url)
+    }
+
     /// Each window's RootView calls this on appear, so the most recently
     /// active window becomes the target for externally opened URLs.
     /// Also tracks the store in `registeredStores` (weak) so the MCP

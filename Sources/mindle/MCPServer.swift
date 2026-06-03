@@ -348,6 +348,23 @@ final class MCPServer {
             }
             return ["ok": true, "collaborators": result ?? [:]]
 
+        case "open_file":
+            guard let path = request["path"] as? String, !path.isEmpty else {
+                return ["ok": false, "error": "missing 'path'"]
+            }
+            let focusApp = (request["focus_app"] as? Bool) ?? false
+            let result = await MainActor.run {
+                AppDelegate.shared?.openFile(path: path, focusApp: focusApp)
+            }
+            guard let result else {
+                return ["ok": false, "error": "couldn't open: file not found at '\(path)' or no Mindle window is open"]
+            }
+            return [
+                "ok": true,
+                "focused": result.focused,
+                "path": result.url.path
+            ]
+
         default:
             return ["ok": false, "error": "unknown op: \(op)"]
         }
