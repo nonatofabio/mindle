@@ -103,7 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         annotationID: UUID,
         author: String,
         text: String,
-        clientID: String?
+        clientID: String?,
+        agentTag: String? = nil
     ) -> Bool {
         registeredStores.removeAll { $0.store == nil }
         for ref in registeredStores {
@@ -112,7 +113,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 annotationID: annotationID,
                 author: author,
                 text: text,
-                clientID: clientID
+                clientID: clientID,
+                agentTag: agentTag
             ) == true {
                 return true
             }
@@ -129,7 +131,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         prefix: String,
         suffix: String,
         note: String,
-        clientID: String?
+        clientID: String?,
+        agentTag: String? = nil
     ) -> UUID? {
         registeredStores.removeAll { $0.store == nil }
         for ref in registeredStores {
@@ -139,7 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 prefix: prefix,
                 suffix: suffix,
                 note: note,
-                clientID: clientID
+                clientID: clientID,
+                agentTag: agentTag
             ) {
                 return id
             }
@@ -177,7 +181,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         annotationID: UUID,
         messageID: UUID?,
         kind: String,
-        author: String
+        author: String,
+        agentTag: String? = nil
     ) -> Bool {
         registeredStores.removeAll { $0.store == nil }
         for ref in registeredStores {
@@ -186,7 +191,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 annotationID: annotationID,
                 messageID: messageID,
                 kind: kind,
-                author: author
+                author: author,
+                agentTag: agentTag
             ) == true {
                 return true
             }

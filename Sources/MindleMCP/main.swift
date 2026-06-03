@@ -19,6 +19,13 @@ struct MindleMCP {
     /// back out of wait_for_annotation_event responses for the same client.
     private static let clientID: String = UUID().uuidString
 
+    /// Friendly tag for the MCP client that spawned this helper — captured
+    /// from `clientInfo.name` on `initialize` (e.g. "claude-code",
+    /// "Cursor"). Threaded into every write op so the annotation card UI
+    /// can render "claude-code" instead of an opaque UUID. Falls back to
+    /// a short slice of `clientID` if the client didn't introduce itself.
+    private static var agentTag: String = ""
+
     static func main() {
         // Synchronous read loop — async/Task on stdin proved flaky in
         // this CLI context. POSIX read on fd 0 is bulletproof.
@@ -67,6 +74,29 @@ struct MindleMCP {
 
         switch method {
         case "initialize":
+            // Capture the MCP client's display name so we can attach it
+            // to every write. Slug-ify it lightly — lowercase, swap
+            // whitespace for hyphens, drop anything not alphanum/hyphen —
+            // so it makes a clean chip in the Mindle UI. Falls back to a
+            // short prefix of clientID when clientInfo is absent.
+            if let clientInfo = params["clientInfo"] as? [String: Any],
+               let raw = clientInfo["name"] as? String,
+               !raw.isEmpty {
+                let lowered = raw.lowercased()
+                let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789-")
+                let mapped = lowered.map { ch -> Character in
+                    if ch.isWhitespace { return "-" }
+                    return allowed.contains(ch) ? ch : "-"
+                }
+                let condensed = String(mapped)
+                    .split(separator: "-", omittingEmptySubsequences: true)
+                    .joined(separator: "-")
+                agentTag = condensed.isEmpty
+                    ? "mcp-\(clientID.prefix(8))"
+                    : condensed
+            } else {
+                agentTag = "mcp-\(clientID.prefix(8))"
+            }
             return success(id: id!, result: [
                 "protocolVersion": "2024-11-05",
                 "capabilities": ["tools": [String: Any]()],
@@ -529,6 +559,9 @@ struct MindleMCP {
         var request = body
         request["op"] = op
         request["client_id"] = clientID
+        if !agentTag.isEmpty {
+            request["agent_tag"] = agentTag
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: request) else {
             return errorContent("could not encode request")
         }

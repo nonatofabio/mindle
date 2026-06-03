@@ -634,6 +634,29 @@ private func reactionGlyph(_ kind: String) -> String {
     reactionVocab.first(where: { $0.kind == kind })?.glyph ?? "•"
 }
 
+/// Small monospace chip rendering an MCP client's identifier (e.g.
+/// "claude-code", "cursor") next to an agent-authored annotation or
+/// reply. Provides the same visual weight as a timestamp — informative
+/// but not loud. Multiple agents in the same document show up as
+/// distinct tags so the reader can tell them apart.
+struct AgentTagChip: View {
+    let tag: String
+    let color: Color
+
+    var body: some View {
+        Text(tag)
+            .font(.system(size: 9, weight: .medium, design: .monospaced))
+            .foregroundStyle(color)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(color.opacity(0.4), lineWidth: 0.5)
+            )
+            .help("Authored by \(tag) (MCP client)")
+    }
+}
+
 /// Compact horizontal row of reaction chips. Groups reactions by kind,
 /// shows `glyph count`, hover-tooltip lists the reactors' aliases.
 /// Tapping a chip toggles your own reaction for that kind.
@@ -775,6 +798,14 @@ struct AnnotationCard: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(dotColor)
                         .lineLimit(1)
+                }
+                // Agent identifier chip — present when an MCP-authored
+                // annotation carries a clientInfo.name (e.g. "claude-code").
+                // Lets the reader distinguish multiple agents in a doc;
+                // omitted for human authors and for older agent
+                // annotations from helpers that never sent the tag.
+                if let tag = annotation.agentTag, !tag.isEmpty {
+                    AgentTagChip(tag: tag, color: c.muted)
                 }
                 // PDF-only: when the anchor doesn't resolve against the
                 // current document state, surface a small warning glyph.
@@ -1189,6 +1220,9 @@ struct AnnotationMessageRow: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(stripeColor)
                         .lineLimit(1)
+                    if let tag = message.agentTag, !tag.isEmpty {
+                        AgentTagChip(tag: tag, color: c.muted)
+                    }
                     Text("·").foregroundStyle(c.muted.opacity(0.4))
                     Text(Self.timeFormatter.string(from: message.createdAt))
                         .font(.system(size: 10))

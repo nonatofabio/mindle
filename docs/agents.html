@@ -91,7 +91,8 @@
     <p>Agents can also originate annotations of their own with <code>create_annotation</code> — for example, to leave questions on a paper after a read-through.</p>
 
     <h2>Identity</h2>
-    <p>Annotations and replies carry an author identifier. Human authors use the display name you set on first launch. Agent authors use whichever identifier their MCP client provides — these are kept distinct in the sidecar so an annotation's origin is preserved over time.</p>
+    <p>Annotations and replies carry an author identifier. Human authors use the display name you set on first launch. Agent authors are recorded as <code>agent</code>, with an additional <strong>agent tag</strong> derived from the MCP client's <code>clientInfo.name</code> at handshake (for example, <code>claude-code</code> or <code>cursor</code>). The tag renders as a small monospace chip on every annotation, reply, and reaction the agent makes, so multiple agents working on the same document can be told apart.</p>
+    <p>Older <code>mindle-mcp</code> helpers that didn't send a tag still work — the chip is just omitted, and the annotation appears as a generic <code>agent</code>.</p>
 
     <h2>Privacy</h2>
     <ul>

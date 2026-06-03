@@ -153,6 +153,12 @@ final class MCPServer {
 
     private static func dispatch(op: String, request: [String: Any]) async -> [String: Any] {
         let clientID = request["client_id"] as? String
+        // Friendly identifier the MCP client gave us on initialize (e.g.
+        // "claude-code"). Used as the agent's display chip on every write
+        // op it makes. Nil for older mindle-mcp helpers that never sent
+        // the field — those writes still record `author: "agent"` and
+        // the UI just doesn't render a chip.
+        let agentTag = request["agent_tag"] as? String
         switch op {
         case "list_open_files":
             let files = await MainActor.run { AppDelegate.shared?.allOpenFilePaths() ?? [] }
@@ -194,7 +200,8 @@ final class MCPServer {
                     annotationID: id,
                     author: "agent",
                     text: text,
-                    clientID: clientID
+                    clientID: clientID,
+                    agentTag: agentTag
                 ) ?? false
             }
             if appended {
@@ -220,7 +227,8 @@ final class MCPServer {
                     annotationID: id,
                     messageID: messageID,
                     kind: kind,
-                    author: "agent"
+                    author: "agent",
+                    agentTag: agentTag
                 ) ?? false
             }
             if ok {
@@ -248,7 +256,8 @@ final class MCPServer {
                     prefix: prefix,
                     suffix: suffix,
                     note: note,
-                    clientID: clientID
+                    clientID: clientID,
+                    agentTag: agentTag
                 )
             }
             if let id = newID {
@@ -403,12 +412,16 @@ final class MCPServer {
         _ reactions: [AnnotationReaction],
         iso: ISO8601DateFormatter
     ) -> [[String: Any]] {
-        reactions.map { r in
-            [
+        reactions.map { r -> [String: Any] in
+            var dict: [String: Any] = [
                 "author": r.author,
                 "kind": r.kind,
                 "createdAt": iso.string(from: r.createdAt)
             ]
+            if let tag = r.agentTag, !tag.isEmpty {
+                dict["agentTag"] = tag
+            }
+            return dict
         }
     }
 
@@ -425,6 +438,9 @@ final class MCPServer {
             "author": ann.author ?? "user",
             "createdAt": iso.string(from: ann.createdAt)
         ]
+        if let tag = ann.agentTag, !tag.isEmpty {
+            payload["agentTag"] = tag
+        }
         // PDF-only: 0-based page the annotation is anchored on. Omitted
         // on Markdown annotations (no page concept) and on PDF
         // annotations whose anchor didn't resolve at create time (the
@@ -444,6 +460,9 @@ final class MCPServer {
                     "text": msg.text,
                     "createdAt": iso.string(from: msg.createdAt)
                 ]
+                if let tag = msg.agentTag, !tag.isEmpty {
+                    m["agentTag"] = tag
+                }
                 if let reactions = msg.reactions, !reactions.isEmpty {
                     m["reactions"] = encodeReactions(reactions, iso: iso)
                 }

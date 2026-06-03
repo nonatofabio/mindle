@@ -89,6 +89,12 @@ struct AnnotationReaction: Codable, Equatable {
     var author: String        // collaborator alias
     var kind: String          // "+1" | "heart" | "laugh" (open-ended)
     var createdAt: Date = Date()
+    /// Friendly tag for the MCP client that authored the reaction, when
+    /// it came from an agent — e.g. "claude-code", "cursor". Nil for
+    /// human reactions and for agent reactions from older mindle-mcp
+    /// helpers that never identified themselves. Pure metadata; the UI
+    /// renders it as a small chip next to the reactor's alias.
+    var agentTag: String?
 }
 
 /// A message in an annotation's thread. Threads are how the user and
@@ -106,6 +112,10 @@ struct AnnotationMessage: Identifiable, Codable, Equatable {
     /// Optional reactions on this message. Nil when none so older
     /// sidecars round-trip clean and the JSON stays compact.
     var reactions: [AnnotationReaction]?
+    /// Friendly tag for the MCP client that authored this message, when
+    /// it came from an agent — e.g. "claude-code", "cursor". Nil for
+    /// human replies. Renders as a small chip on the reply card.
+    var agentTag: String?
 }
 
 struct Annotation: Identifiable, Codable, Equatable {
@@ -119,6 +129,14 @@ struct Annotation: Identifiable, Codable, Equatable {
     /// before threads existed. Agent-created annotations get "agent"
     /// so the UI can mark them distinctly.
     var author: String?
+    /// Friendly tag for the MCP client that created this annotation,
+    /// when it came from an agent — e.g. "claude-code", "cursor".
+    /// Captured at create_annotation time from the client's initialize
+    /// handshake. Nil for human-authored annotations and for older
+    /// agent annotations from helpers that never sent a tag. Renders
+    /// as a small chip on the annotation card so multiple agents can be
+    /// told apart in a shared document.
+    var agentTag: String?
     /// Optional follow-up messages. Stored nil (not []) when there are
     /// no replies so existing sidecars round-trip without growth and
     /// the JSON stays minimal for the common case.
@@ -1381,10 +1399,12 @@ final class DocumentStore: ObservableObject {
         annotationID: UUID,
         author: String,
         text: String,
-        clientID: String? = nil
+        clientID: String? = nil,
+        agentTag: String? = nil
     ) -> Bool {
         DebugConsole.shared.log("REPLY: to \(annotationID.uuidString.prefix(8)) by \(author)")
-        let message = AnnotationMessage(author: author, text: text)
+        var message = AnnotationMessage(author: author, text: text)
+        message.agentTag = agentTag
         let canonical = URL(fileURLWithPath: path).canonicalPath
         if let active = activeTabID,
            let i = tabs.firstIndex(where: { $0.id == active }),
@@ -1437,7 +1457,8 @@ final class DocumentStore: ObservableObject {
         prefix: String,
         suffix: String,
         note: String,
-        clientID: String? = nil
+        clientID: String? = nil,
+        agentTag: String? = nil
     ) -> UUID? {
         var ann = Annotation(
             text: text,
@@ -1447,6 +1468,7 @@ final class DocumentStore: ObservableObject {
             author: "agent",
             thread: nil
         )
+        ann.agentTag = agentTag
         let canonical = URL(fileURLWithPath: path).canonicalPath
         if let active = activeTabID,
            let i = tabs.firstIndex(where: { $0.id == active }),
@@ -1863,21 +1885,22 @@ final class DocumentStore: ObservableObject {
         annotationID: UUID,
         messageID: UUID? = nil,
         kind: String,
-        author: String = "agent"
+        author: String = "agent",
+        agentTag: String? = nil
     ) -> Bool {
         let canonical = URL(fileURLWithPath: path).canonicalPath
         if let active = activeTabID,
            let i = tabs.firstIndex(where: { $0.id == active }),
            tabs[i].fileURL.canonicalPath == canonical {
             guard annotations.contains(where: { $0.id == annotationID }) else { return false }
-            applyReactionToggle(in: &annotations, annotationID: annotationID, messageID: messageID, kind: kind, author: author)
+            applyReactionToggle(in: &annotations, annotationID: annotationID, messageID: messageID, kind: kind, author: author, agentTag: agentTag)
             DebugConsole.shared.log("REACT: \(kind) on \(annotationID.uuidString.prefix(8))\(messageID != nil ? "/msg" : "") by \(author)")
             saveSidecar()
             return true
         }
         if let i = tabs.firstIndex(where: { $0.fileURL.canonicalPath == canonical }) {
             guard tabs[i].annotations.contains(where: { $0.id == annotationID }) else { return false }
-            applyReactionToggle(in: &tabs[i].annotations, annotationID: annotationID, messageID: messageID, kind: kind, author: author)
+            applyReactionToggle(in: &tabs[i].annotations, annotationID: annotationID, messageID: messageID, kind: kind, author: author, agentTag: agentTag)
             DebugConsole.shared.log("REACT: \(kind) on \(annotationID.uuidString.prefix(8))\(messageID != nil ? "/msg" : "") by \(author) (inactive tab)")
             saveSidecar(forTab: tabs[i])
             return true
@@ -1893,7 +1916,8 @@ final class DocumentStore: ObservableObject {
         annotationID: UUID,
         messageID: UUID?,
         kind: String,
-        author: String
+        author: String,
+        agentTag: String? = nil
     ) {
         guard let i = anns.firstIndex(where: { $0.id == annotationID }) else { return }
         if let messageID {
@@ -1903,7 +1927,9 @@ final class DocumentStore: ObservableObject {
             if let k = existing.firstIndex(where: { $0.author == author && $0.kind == kind }) {
                 existing.remove(at: k)
             } else {
-                existing.append(AnnotationReaction(author: author, kind: kind))
+                var r = AnnotationReaction(author: author, kind: kind)
+                r.agentTag = agentTag
+                existing.append(r)
             }
             thread[j].reactions = existing.isEmpty ? nil : existing
             anns[i].thread = thread
@@ -1912,7 +1938,9 @@ final class DocumentStore: ObservableObject {
             if let k = existing.firstIndex(where: { $0.author == author && $0.kind == kind }) {
                 existing.remove(at: k)
             } else {
-                existing.append(AnnotationReaction(author: author, kind: kind))
+                var r = AnnotationReaction(author: author, kind: kind)
+                r.agentTag = agentTag
+                existing.append(r)
             }
             anns[i].reactions = existing.isEmpty ? nil : existing
         }
