@@ -276,15 +276,23 @@
       // the next paint so the position lands after layout finalizes.
       requestAnimationFrame(() => {
         if (pendingScrollAnchor && pendingScrollAnchor.anchorSnippet) {
-          const newTop = locateAnchorInDoc(pendingScrollAnchor.anchorSnippet);
+          const newTop = locateAnchorInDoc(
+            pendingScrollAnchor.anchorSnippet,
+            pendingScrollAnchor.expectedDocY
+          );
           if (newTop != null) {
-            // Keep the just-actioned content at the same screen position
-            // it was at when the user clicked. Anything above it shifts;
-            // the cursor's focal point doesn't move.
             const delta = newTop - pendingScrollAnchor.viewportTop;
-            window.scrollBy(0, delta);
-            pendingScrollAnchor = null;
-            return;
+            // Sanity gate: if the snippet matched somewhere very far
+            // from the click site (a homograph elsewhere in a long
+            // doc), accepting the delta would jump the user out of
+            // their reading region. Two viewport heights is a
+            // generous threshold — typical paragraph reflow is well
+            // under one.
+            if (Math.abs(delta) <= window.innerHeight * 2) {
+              window.scrollBy(0, delta);
+              pendingScrollAnchor = null;
+              return;
+            }
           }
         }
         pendingScrollAnchor = null;
@@ -293,46 +301,61 @@
     }
   };
 
-  // First non-trivial line of the chunk's replacement text, stripped of
-  // markdown decoration and normalised whitespace — meant to round-trip
-  // through markdown-it and end up as a substring of some text node in
-  // the rendered DOM. 80-char cap balances uniqueness against the risk
-  // of subsequent paragraph wraps splitting it across nodes.
+  // Pick the longest contiguous run of "plain readable text" from the
+  // chunk's replacement — letters, digits, basic punctuation, spaces.
+  // Markdown decoration (table pipes, list markers, link syntax, code
+  // fences, headings) drops out at the boundary rather than being
+  // half-stripped mid-snippet, which used to leave artifacts like
+  // "- Try a lower SPI speed first" or "Adafruit datasheethttps://..."
+  // that don't appear verbatim in the rendered DOM (#39).
   function extractAnchorSnippet(rawText) {
     if (!rawText) return "";
-    const lines = String(rawText).split("\n");
-    for (const line of lines) {
-      const cleaned = line
-        .replace(/^[#>\-*\d.\s]+/, "")
-        .replace(/[*_`~\[\]]/g, "")
-        .replace(/\s+/g, " ")
+    // Match runs of readable chars. Stops at any markdown punctuation
+    // that gets transformed during rendering (|, [, ], (, ), *, _, `,
+    // ~, #, >, =, /, \, <, >) so we never carry those into the search.
+    const runs = String(rawText).match(/[A-Za-z0-9 .,;:!?'"\-]{6,}/g) || [];
+    let best = "";
+    for (const raw of runs) {
+      // Strip list / heading markers that sit at the start of a run
+      // (e.g. "- ", "* ", "1. ", "# ") since the rendered <li> / <h*>
+      // contains the content without them.
+      const trimmed = raw.trim()
+        .replace(/^[-*#]\s+/, "")
+        .replace(/^\d+\.\s+/, "")
         .trim();
-      if (cleaned.length >= 6) {
-        return cleaned.slice(0, 80);
-      }
+      if (trimmed.length > best.length) best = trimmed;
     }
-    return "";
+    return best.length >= 6 ? best.slice(0, 80) : "";
   }
 
-  // Walk text nodes inside the article and return the viewport-relative
-  // top of the first parent element whose text contains `snippet`. Null
-  // when the snippet can't be found — the caller falls back to the
-  // pre-action scroll position. First match wins; for documents with
-  // duplicated snippets the first occurrence is good enough since
-  // accepted chunks usually contain a tail of new context that's unique
-  // anyway.
-  function locateAnchorInDoc(snippet) {
+  // Walk text nodes inside the article looking for `snippet`. Collect
+  // every match's parent element's viewport-top, then return the one
+  // closest to `expectedDocY` (the document-Y where the chunk used to
+  // live). When only one match exists, that's the answer. When the
+  // snippet appears multiple times in the doc, distance-to-expected
+  // disambiguates — without it the first occurrence would always win
+  // and a chunk near the bottom would scroll us back to the top match.
+  function locateAnchorInDoc(snippet, expectedDocY) {
     if (!snippet) return null;
     const walker = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT, null);
+    const matches = [];
     while (walker.nextNode()) {
       const n = walker.currentNode;
       const v = n.nodeValue || "";
       if (v.indexOf(snippet) >= 0) {
         const parent = n.parentElement;
-        if (parent) return parent.getBoundingClientRect().top;
+        if (parent) {
+          const top = parent.getBoundingClientRect().top;
+          matches.push({ viewportTop: top, docY: top + window.scrollY });
+        }
       }
     }
-    return null;
+    if (!matches.length) return null;
+    if (matches.length === 1 || expectedDocY == null) return matches[0].viewportTop;
+    matches.sort((a, b) =>
+      Math.abs(a.docY - expectedDocY) - Math.abs(b.docY - expectedDocY)
+    );
+    return matches[0].viewportTop;
   }
 
   // -------- Diff render helpers --------
@@ -639,8 +662,13 @@
         const wrapper = btn.closest(".mindle-diff-chunk");
         if (wrapper) {
           const replacement = (action === "accept") ? chunk.after : chunk.before;
+          const rect = wrapper.getBoundingClientRect();
           pendingScrollAnchor = {
-            viewportTop: wrapper.getBoundingClientRect().top,
+            viewportTop: rect.top,
+            // Document-Y disambiguates among multiple snippet matches
+            // after re-render — the right occurrence is the one whose
+            // new docY is closest to where the chunk used to live.
+            expectedDocY: rect.top + window.scrollY,
             anchorSnippet: extractAnchorSnippet(replacement)
           };
         }
