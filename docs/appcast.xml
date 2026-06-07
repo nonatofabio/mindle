@@ -283,5 +283,15 @@
       <description><![CDATA[<p>Release 3.1.0-rc3. <a href="https://github.com/nonatofabio/mindle/releases/tag/v3.1.0-rc3">Full release notes on GitHub</a>.</p><hr><p style="text-align: center; font-size: 0.85em; color: #7d6b52; margin-top: 1.5em;"><a href="https://buymeacoffee.com/nonatofabio" style="color: #8c5520; text-decoration: none;">☕ Buy me a coffee</a></p>]]></description>
       <enclosure url="https://github.com/nonatofabio/mindle/releases/download/v3.1.0-rc3/Mindle.dmg" sparkle:edSignature="6bCx1ajWHVGya0r/KoKiIbn/9CVSHT7taKkG3gUBSRVtCqAgXdsT+DL9imSaQOLYKMv7hfEz0vH1MjlIAGPMBA==" length="4689264" type="application/octet-stream" />
     </item>
+      <item>
+      <title>Version 3.1.0-rc4</title>
+      <pubDate>Sun, 07 Jun 2026 16:18:32 +0000</pubDate>
+      <sparkle:shortVersionString>3.1.0-rc4</sparkle:shortVersionString>
+      <sparkle:version>168</sparkle:version>
+      <sparkle:channel>beta</sparkle:channel>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>Release 3.1.0-rc4. <a href="https://github.com/nonatofabio/mindle/releases/tag/v3.1.0-rc4">Full release notes on GitHub</a>.</p><hr><p style="text-align: center; font-size: 0.85em; color: #7d6b52; margin-top: 1.5em;"><a href="https://buymeacoffee.com/nonatofabio" style="color: #8c5520; text-decoration: none;">☕ Buy me a coffee</a></p>]]></description>
+      <enclosure url="https://github.com/nonatofabio/mindle/releases/download/v3.1.0-rc4/Mindle.dmg" sparkle:edSignature="c2pkBKlP+RBMjU9BWVnIBWyFni5M6LyDPEAre06P9bdFXJ+PIXJ3Egi+HZ20tw/Tg+c/304F+Eqp4sbTQVcvBw==" length="4691762" type="application/octet-stream" />
+    </item>
   </channel>
 </rss>
