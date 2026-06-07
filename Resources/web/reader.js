@@ -230,6 +230,12 @@
   // instead of leaving the reader frozen at the previous scrollY.
   let pendingScrollAfterRender = null;
 
+  // Index of the diff chunk the user is currently focused on (via the
+  // banner's Prev / Next nav). -1 means "no chunk highlighted yet" —
+  // the counter renders as "N pending changes" until the user steps
+  // into a specific chunk. Reset on every render in mindleLoad.
+  let currentDiffIndex = -1;
+
   window.mindleLoad = async function (markdown, preserveScroll, lastSynced) {
     // Live-reload: capture scroll before swapping HTML so we can restore
     // it once the new render is laid out. Initial loads / tab switches
@@ -244,6 +250,11 @@
       renderedHTML = md.render(unwrapFrontmatter(activeCurrent));
       diffChunks = [];
     }
+    // The chunk-set the user was navigating may have changed (chunks
+    // accepted, rejected, or the file rewritten externally). Drop the
+    // "current chunk" cursor and let Prev/Next start clean from the
+    // banner's idle state.
+    currentDiffIndex = -1;
     // Switching documents clears search state; annotations are replayed below.
     searchState = { query: "", current: 0, total: 0, matchSets: [] };
     await applyAll();
@@ -463,7 +474,8 @@
   // Sticky banner at the top of the article when a diff is in flight.
   // Gives users a one-click path to keep or revert every chunk at once
   // instead of clicking through each pair — the inline buttons remain
-  // for granular review.
+  // for granular review. Also exposes Prev / Next so multi-chunk
+  // documents can be walked through without scrolling by hand (#38).
   function injectDiffBanner() {
     removeDiffBanner();
     const count = diffChunks.length;
@@ -471,9 +483,12 @@
     const banner = document.createElement("div");
     banner.id = "mindle-diff-banner";
     banner.className = "mindle-diff-banner";
-    const noun = count === 1 ? "change" : "changes";
     banner.innerHTML =
-      '<span class="mindle-diff-banner-label">' + count + ' pending ' + noun + '</span>' +
+      '<span class="mindle-diff-banner-label" data-mindle-diff-counter></span>' +
+      '<span class="mindle-diff-banner-nav">' +
+        '<button data-mindle-diff-action="prev" title="Previous change">◀</button>' +
+        '<button data-mindle-diff-action="next" title="Next change">▶</button>' +
+      '</span>' +
       '<span class="mindle-diff-banner-actions">' +
         '<button data-mindle-diff-action="accept-all">✓ Keep All</button>' +
         '<button data-mindle-diff-action="reject-all">✗ Revert All</button>' +
@@ -489,6 +504,65 @@
         ev.preventDefault();
         postToSwift("diffRejectAll", {});
       });
+    banner.querySelector('[data-mindle-diff-action="prev"]')
+      .addEventListener("click", (ev) => {
+        ev.preventDefault();
+        gotoDiffChunk(currentDiffIndex < 0 ? diffChunks.length - 1 : currentDiffIndex - 1);
+      });
+    banner.querySelector('[data-mindle-diff-action="next"]')
+      .addEventListener("click", (ev) => {
+        ev.preventDefault();
+        gotoDiffChunk(currentDiffIndex < 0 ? 0 : currentDiffIndex + 1);
+      });
+    updateDiffBannerCounter();
+  }
+
+  function updateDiffBannerCounter() {
+    const banner = document.getElementById("mindle-diff-banner");
+    if (!banner) return;
+    const counter = banner.querySelector("[data-mindle-diff-counter]");
+    const count = diffChunks.length;
+    const noun = count === 1 ? "change" : "changes";
+    if (counter) {
+      counter.textContent = (currentDiffIndex >= 0)
+        ? (currentDiffIndex + 1) + " of " + count + " pending " + noun
+        : count + " pending " + noun;
+    }
+    const prev = banner.querySelector('[data-mindle-diff-action="prev"]');
+    const next = banner.querySelector('[data-mindle-diff-action="next"]');
+    if (prev) prev.disabled = (currentDiffIndex <= 0);
+    if (next) next.disabled = (currentDiffIndex >= count - 1);
+  }
+
+  // Step into the diff chunk at `idx`. Clamps to the chunk range,
+  // smooth-scrolls the chunk so its top sits below the sticky banner,
+  // and briefly pulses a focus highlight on the wrapper so the eye
+  // catches the new target.
+  function gotoDiffChunk(idx) {
+    if (!diffChunks.length) return;
+    const clamped = Math.max(0, Math.min(diffChunks.length - 1, idx));
+    currentDiffIndex = clamped;
+    const chunk = diffChunks[clamped];
+    const wrapper = doc.querySelector(
+      '.mindle-diff-chunk[data-mindle-diff-id="' + chunk.id + '"]'
+    );
+    if (wrapper) {
+      // Banner is sticky at top: 12px; offset for a small extra gap.
+      const bannerEl = document.getElementById("mindle-diff-banner");
+      const bannerHeight = bannerEl ? bannerEl.getBoundingClientRect().height + 24 : 60;
+      const target = Math.max(
+        0,
+        wrapper.getBoundingClientRect().top + window.scrollY - bannerHeight
+      );
+      window.scrollTo({ top: target, behavior: "smooth" });
+      // Pulse the focus class. The class fades the highlight back to
+      // baseline via a CSS transition so a fast next/prev sequence
+      // still reads as movement rather than a flicker.
+      doc.querySelectorAll(".mindle-diff-chunk.mindle-diff-chunk-focused")
+        .forEach(n => n.classList.remove("mindle-diff-chunk-focused"));
+      wrapper.classList.add("mindle-diff-chunk-focused");
+    }
+    updateDiffBannerCounter();
   }
 
   function attachDiffHandlers() {

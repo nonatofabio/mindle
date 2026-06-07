@@ -683,9 +683,35 @@ pre:has(> code:empty):has(+ .mindle-diff-chunk) {
   font-weight: 500;
 }
 
-.mindle-diff-banner-actions {
+.mindle-diff-banner-actions,
+.mindle-diff-banner-nav {
   display: flex;
   gap: 0.5em;
+}
+
+/* Prev/Next buttons sit visually between the counter and the bulk
+   actions. Narrower padding so they read as nav arrows rather than
+   labelled buttons. Disabled state dims them so the boundaries of
+   the chunk list are visible without trial and error. */
+.mindle-diff-banner-nav button {
+  padding: 5px 9px;
+  min-width: 28px;
+}
+.mindle-diff-banner-nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: var(--background);
+}
+.mindle-diff-banner-nav button:disabled:hover {
+  background: var(--background);
+}
+
+/* Focus pulse for the currently-selected chunk via Prev/Next. Same
+   accent ring as the inline diff frame but a touch brighter, fading
+   back to baseline so fast next/prev runs read as motion not flicker. */
+.mindle-diff-chunk-focused {
+  box-shadow: 0 0 0 2px var(--accent, #8c5520);
+  transition: box-shadow 0.6s ease;
 }
 
 .mindle-diff-banner button {
