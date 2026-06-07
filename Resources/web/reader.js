@@ -224,11 +224,17 @@
   let activeLastSynced = "";
   let diffChunks = [];   // {id, removeStart, removeEnd, addStart, addEnd, before, after}
 
-  // Set by attachDiffHandlers when the user clicks ✓ Keep / ✗ Revert,
-  // so the next render after the round-trip can scroll to where the
-  // chunk used to be — visual confirmation that the action landed,
-  // instead of leaving the reader frozen at the previous scrollY.
-  let pendingScrollAfterRender = null;
+  // Set by attachDiffHandlers when the user clicks per-chunk ✓ Keep /
+  // ✗ Revert. Carries:
+  //   viewportTop — y of the chunk wrapper in the OLD viewport
+  //   anchorSnippet — first ~80 chars of plain text that will replace
+  //     the chunk (chunk.after on accept, chunk.before on reject)
+  // After the round-trip, the next render finds the snippet in the new
+  // DOM and scrolls so it ends up at the same viewportTop — content
+  // stays put under the cursor, the rest of the doc reflows around it.
+  // Replaces the prior absolute-document-Y approach which drifted as
+  // chunks above the action point collapsed (#39).
+  let pendingScrollAnchor = null;
 
   // Index of the diff chunk the user is currently focused on (via the
   // banner's Prev / Next nav). -1 means "no chunk highlighted yet" —
@@ -269,14 +275,65 @@
       // applyAll's mermaid pass can settle in another frame; restore on
       // the next paint so the position lands after layout finalizes.
       requestAnimationFrame(() => {
-        const target = (pendingScrollAfterRender != null)
-          ? pendingScrollAfterRender
-          : savedScroll;
-        pendingScrollAfterRender = null;
-        window.scrollTo(0, target);
+        if (pendingScrollAnchor && pendingScrollAnchor.anchorSnippet) {
+          const newTop = locateAnchorInDoc(pendingScrollAnchor.anchorSnippet);
+          if (newTop != null) {
+            // Keep the just-actioned content at the same screen position
+            // it was at when the user clicked. Anything above it shifts;
+            // the cursor's focal point doesn't move.
+            const delta = newTop - pendingScrollAnchor.viewportTop;
+            window.scrollBy(0, delta);
+            pendingScrollAnchor = null;
+            return;
+          }
+        }
+        pendingScrollAnchor = null;
+        window.scrollTo(0, savedScroll);
       });
     }
   };
+
+  // First non-trivial line of the chunk's replacement text, stripped of
+  // markdown decoration and normalised whitespace — meant to round-trip
+  // through markdown-it and end up as a substring of some text node in
+  // the rendered DOM. 80-char cap balances uniqueness against the risk
+  // of subsequent paragraph wraps splitting it across nodes.
+  function extractAnchorSnippet(rawText) {
+    if (!rawText) return "";
+    const lines = String(rawText).split("\n");
+    for (const line of lines) {
+      const cleaned = line
+        .replace(/^[#>\-*\d.\s]+/, "")
+        .replace(/[*_`~\[\]]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (cleaned.length >= 6) {
+        return cleaned.slice(0, 80);
+      }
+    }
+    return "";
+  }
+
+  // Walk text nodes inside the article and return the viewport-relative
+  // top of the first parent element whose text contains `snippet`. Null
+  // when the snippet can't be found — the caller falls back to the
+  // pre-action scroll position. First match wins; for documents with
+  // duplicated snippets the first occurrence is good enough since
+  // accepted chunks usually contain a tail of new context that's unique
+  // anyway.
+  function locateAnchorInDoc(snippet) {
+    if (!snippet) return null;
+    const walker = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT, null);
+    while (walker.nextNode()) {
+      const n = walker.currentNode;
+      const v = n.nodeValue || "";
+      if (v.indexOf(snippet) >= 0) {
+        const parent = n.parentElement;
+        if (parent) return parent.getBoundingClientRect().top;
+      }
+    }
+    return null;
+  }
 
   // -------- Diff render helpers --------
 
@@ -574,15 +631,18 @@
         const id = btn.getAttribute("data-mindle-diff-id");
         const chunk = diffChunks.find(c => c.id === id);
         if (!chunk) return;
-        // Capture where the chunk lives now so we can scroll back to
-        // the same vertical position on the next render — when the
-        // chunk chrome has collapsed but the content stays where the
-        // user was looking. Without this the reader drifts up to a
-        // shorter doc and the just-actioned content scrolls off-view.
+        // Anchor the viewport on the chunk's replacement content so
+        // the user's eye stays on the change rather than tracking
+        // whatever shifts in or out at the top of the document.
+        // Captures viewport-y now; the next render finds the same
+        // text and adjusts scroll to put it back at the same y (#39).
         const wrapper = btn.closest(".mindle-diff-chunk");
         if (wrapper) {
-          pendingScrollAfterRender =
-            wrapper.getBoundingClientRect().top + window.scrollY - 40;
+          const replacement = (action === "accept") ? chunk.after : chunk.before;
+          pendingScrollAnchor = {
+            viewportTop: wrapper.getBoundingClientRect().top,
+            anchorSnippet: extractAnchorSnippet(replacement)
+          };
         }
         if (action === "accept") {
           // Promote this chunk's "after" into the baseline.
