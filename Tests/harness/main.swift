@@ -2,6 +2,7 @@ import Foundation
 
 var failures = 0
 failures += runSSHTargetChecks()
+failures += await runSSHTransportChecks()
 
 if failures > 0 {
     print("\nFAILED: \(failures) check(s)")

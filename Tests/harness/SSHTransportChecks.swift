@@ -1,0 +1,54 @@
+import Foundation
+
+func runSSHTransportChecks() async -> Int {
+    let c = Checks("SSHTransport")
+
+    // fetchArgs carry BatchMode + ConnectTimeout; quoted remote source; tmp last
+    let t = SSHTarget(userHostPath: "fabio@devbox:/a/spec.md")!
+    let tmp = URL(fileURLWithPath: "/tmp/x/spec.md.fetch")
+    let fargs = SSHTransport.fetchArgs(t, tmp: tmp)
+    c.expect(fargs.contains("BatchMode=yes"), "fetchArgs has BatchMode")
+    c.expect(fargs.contains("ConnectTimeout=10"), "fetchArgs has ConnectTimeout")
+    c.equal(fargs.last, tmp.path, "fetchArgs local tmp last")
+    c.expect(fargs.contains("fabio@devbox:'/a/spec.md'"), "fetchArgs quoted remote source")
+
+    // pushArgs: local proxy first, quoted remote temp, BatchMode present
+    let proxy = URL(fileURLWithPath: "/tmp/x/spec.md")
+    let pargs = SSHTransport.pushArgs(proxy, to: t)
+    c.equal(pargs.first, proxy.path, "pushArgs local source first")
+    c.expect(pargs.contains("fabio@devbox:'/a/spec.md.mindle-tmp'"), "pushArgs quoted remote temp")
+    c.expect(pargs.contains("BatchMode=yes"), "pushArgs has BatchMode")
+
+    // remoteMvArgs: userHost present + quoted mv command + BatchMode
+    let tSpace = SSHTarget(userHostPath: "fabio@devbox:/a/my notes.md")!
+    let margs = SSHTransport.remoteMvArgs(tSpace)
+    c.expect(margs.contains("fabio@devbox"), "remoteMvArgs has userHost")
+    c.expect(margs.contains("mv '/a/my notes.md.mindle-tmp' '/a/my notes.md'"), "remoteMvArgs quoted mv")
+    c.expect(margs.contains("BatchMode=yes"), "remoteMvArgs has BatchMode")
+
+    // shellSingleQuote
+    c.equal(SSHTransport.shellSingleQuote("/a/b"), "'/a/b'", "shellSingleQuote simple")
+    c.equal(SSHTransport.shellSingleQuote("it's"), "'it'\\''s'", "shellSingleQuote escapes quote")
+
+    // fetch throws on non-zero exit (fake runner — no real ssh)
+    let runner = FakeRunner(result: ProcessResult(status: 1, stdout: Data(),
+                            stderr: "ssh: connect to host devbox port 22: Connection refused\n".data(using: .utf8)!))
+    let proxy2 = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("spec.md")
+    do {
+        try await SSHTransport.fetch(t, to: proxy2, runner: runner)
+        c.expect(false, "fetch should throw on non-zero exit")
+    } catch let SSHTransportError.nonZeroExit(status, stderr) {
+        c.equal(status, 1, "fetch error status")
+        c.expect(stderr.contains("Connection refused"), "fetch error stderr")
+    } catch {
+        c.expect(false, "fetch threw wrong error: \(error)")
+    }
+
+    if c.failures == 0 { print("✓ SSHTransport: \(c.passed) checks passed") }
+    return c.failures
+}
+
+private struct FakeRunner: ProcessRunner {
+    let result: ProcessResult
+    func run(launchPath: String, arguments: [String]) async throws -> ProcessResult { result }
+}

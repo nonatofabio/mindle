@@ -8,8 +8,10 @@ cd "$(dirname "$0")"
 mkdir -p .build
 swiftc -O \
   Sources/mindle/SSHTarget.swift \
+  Sources/mindle/SSHTransport.swift \
   Tests/harness/TestHarness.swift \
   Tests/harness/SSHTargetChecks.swift \
+  Tests/harness/SSHTransportChecks.swift \
   Tests/harness/main.swift \
   -o .build/run-tests
 .build/run-tests
