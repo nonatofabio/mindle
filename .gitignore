@@ -11,3 +11,4 @@ build/
 *.key
 *.p12
 *.p8
+.build/
