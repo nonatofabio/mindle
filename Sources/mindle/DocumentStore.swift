@@ -214,6 +214,10 @@ struct DocumentTab: Identifiable, Equatable {
 @MainActor
 final class DocumentStore: ObservableObject {
     @Published var fileURL: URL?
+    /// Set when the active tab is a remote SSH file. Drives save push-back,
+    /// reload re-fetch, and watcher suppression. Nil for local/URL/clipboard
+    /// tabs. Kept in sync with the active tab's `sourceURL`.
+    private var activeRemoteTarget: SSHTarget?
     @Published var rawText: String = ""
     @Published var annotations: [Annotation] = []
     /// Collaborator registry loaded from sidecar — maps alias to display info.
@@ -444,6 +448,19 @@ final class DocumentStore: ObservableObject {
         return dir
     }
 
+    /// ~/Library/Application Support/Mindle/ssh-cache/. Holds per-target
+    /// proxy copies of remote files (`<hash>/<basename>`) plus their local
+    /// sidecars. Created on first access.
+    static func sshCacheDir() -> URL? {
+        guard let support = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let dir = support
+            .appendingPathComponent("Mindle", isDirectory: true)
+            .appendingPathComponent("ssh-cache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     /// FNV-1a 64-bit hash of an arbitrary UTF-8 string. Used for content
     /// hashing of pasted clipboard text and PDF page-text fingerprints —
     /// stable across launches, fits in a filename, collision-resistant
@@ -486,66 +503,111 @@ final class DocumentStore: ObservableObject {
     }
 
     func open(url: URL) {
-        // Already open in this window? Switch to its tab without re-reading from disk.
+        // Already open in this window? Switch to its tab without re-reading.
         if let existing = tabs.first(where: { $0.fileURL == url }) {
             activate(tabID: existing.id)
             return
         }
-
         do {
             // PDFs don't go through the UTF-8 text path — PDFReaderView
             // renders directly from the file URL. rawText stays empty so
             // the markdown pipeline (markdown-it, search, highlight, diff)
             // doesn't try to do anything with the binary PDF bytes.
             let kind = DocumentKind.kind(for: url)
-            let text: String = (kind == .pdf)
-                ? ""
-                : try String(contentsOf: url, encoding: .utf8)
-            // Re-root the file tree only when the new file is outside the current scope.
-            // Clicking a file inside a subfolder of the current root must preserve rooting.
-            let shouldRebuildTree: Bool
-            if let root = fileTree?.url {
-                shouldRebuildTree = !Self.isDescendant(url: url, of: root)
-            } else {
-                shouldRebuildTree = true
-            }
-
-            // Persist the outgoing tab's in-memory state into its snapshot so
-            // we can rehydrate it without going back to disk if the user
-            // returns to it.
-            snapshotActiveTab()
-
-            let newTab = DocumentTab(id: UUID(), fileURL: url, rawText: text, annotations: [], lastSyncedText: text)
-            tabs.append(newTab)
-            activeTabID = newTab.id
-
-            closeSearch()
-            focusedAnnotation = nil
-            editingAnnotationID = nil
-            updateSelection(text: "", prefix: "", suffix: "")
-
-            self.fileURL = url
-            self.rawText = text
-            self.lastSyncedText = text
-            self.annotations = []
-            self.collaborators = [:]
-            self.resetReaderPrefsToUserDefaults()
-            self.loadSidecar()
-
-            // Capture the sidecar-loaded annotations into the tab snapshot.
-            snapshotActiveTab()
-
-            if shouldRebuildTree {
-                refreshFileTree()
-            }
-            NSDocumentController.shared.noteNewRecentDocumentURL(url)
-            updateWatcher()
-            // The previously-active tab is now inactive — give it a
-            // watcher pair so external changes can flip its unread flag.
-            syncInactiveWatchers()
+            let text: String = (kind == .pdf) ? "" : try String(contentsOf: url, encoding: .utf8)
+            finishOpen(url: url, text: text, kind: kind, sourceURL: nil, remoteTarget: nil)
         } catch {
             NSSound.beep()
         }
+    }
+
+    /// Shared tab-construction body for both local `open(url:)` and remote
+    /// `openRemote`. `url` is always a local file URL (the proxy, for remote
+    /// tabs). `sourceURL`/`remoteTarget` are set only for remote tabs.
+    private func finishOpen(url: URL, text: String, kind: DocumentKind,
+                            sourceURL: URL?, remoteTarget: SSHTarget?) {
+        // Re-root the file tree only when the new file is outside the current scope.
+        // Clicking a file inside a subfolder of the current root must preserve rooting.
+        let shouldRebuildTree: Bool
+        if let root = fileTree?.url {
+            shouldRebuildTree = !Self.isDescendant(url: url, of: root)
+        } else {
+            shouldRebuildTree = true
+        }
+
+        // Persist the outgoing tab's in-memory state into its snapshot so
+        // we can rehydrate it without going back to disk if the user
+        // returns to it.
+        snapshotActiveTab()
+
+        var newTab = DocumentTab(id: UUID(), fileURL: url, rawText: text,
+                                 annotations: [], lastSyncedText: text)
+        newTab.sourceURL = sourceURL
+        tabs.append(newTab)
+        activeTabID = newTab.id
+
+        closeSearch()
+        focusedAnnotation = nil
+        editingAnnotationID = nil
+        updateSelection(text: "", prefix: "", suffix: "")
+
+        self.fileURL = url
+        self.rawText = text
+        self.lastSyncedText = text
+        self.annotations = []
+        self.collaborators = [:]
+        self.activeRemoteTarget = remoteTarget
+        self.resetReaderPrefsToUserDefaults()
+        self.loadSidecar()
+
+        // Capture the sidecar-loaded annotations into the tab snapshot.
+        snapshotActiveTab()
+
+        if shouldRebuildTree { refreshFileTree() }
+        if url.isFileURL && remoteTarget == nil {
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        }
+        updateWatcher()
+        // The previously-active tab is now inactive — give it a
+        // watcher pair so external changes can flip its unread flag.
+        syncInactiveWatchers()
+    }
+
+    /// Open a remote SSH file: fetch it to the local proxy, then run the
+    /// normal pipeline on that proxy. Dedups on the canonical target across
+    /// already-open tabs. Surfaces failures via an alert; creates no tab on
+    /// failure.
+    func openRemote(_ target: SSHTarget) async {
+        guard let cacheDir = Self.sshCacheDir(), let source = target.sourceURL else {
+            NSSound.beep(); return
+        }
+        if let existing = tabs.first(where: { $0.sourceURL == source }) {
+            activate(tabID: existing.id); return
+        }
+        let proxy = target.proxyURL(cacheDir: cacheDir)
+        do {
+            try await SSHTransport.fetch(target, to: proxy)
+            // A concurrent openRemote for the same target may have created
+            // the tab while our fetch was in flight (the pre-await dedup
+            // can't see it). Re-check on the main actor before appending.
+            if let existing = tabs.first(where: { $0.sourceURL == source }) {
+                activate(tabID: existing.id); return
+            }
+            let kind = DocumentKind.kind(for: proxy)
+            let text: String = (kind == .pdf) ? "" : try String(contentsOf: proxy, encoding: .utf8)
+            finishOpen(url: proxy, text: text, kind: kind, sourceURL: source, remoteTarget: target)
+        } catch {
+            presentRemoteError(title: "Couldn’t open \(target.canonical)", error: error)
+        }
+    }
+
+    /// Shared alert for remote transport failures.
+    func presentRemoteError(title: String, error: Error) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        alert.alertStyle = .warning
+        alert.runModal()
     }
 
     // MARK: - Live reload
@@ -588,7 +650,7 @@ final class DocumentStore: ObservableObject {
         // PDFView, so they need no body watcher at all. Sidecar watcher
         // still applies — that's how teammates' annotation edits flow
         // in.
-        if DocumentKind.kind(for: url) != .pdf {
+        if DocumentKind.kind(for: url) != .pdf && activeRemoteTarget == nil {
             fileWatcher = FileWatcher(url: url) { [weak self] in
                 self?.reloadFromDisk()
             }
@@ -626,7 +688,8 @@ final class DocumentStore: ObservableObject {
             guard url.isFileURL else { continue }
             let id = tab.id
             if inactiveFileWatchers[id] == nil,
-               DocumentKind.kind(for: url) != .pdf {
+               DocumentKind.kind(for: url) != .pdf,
+               tab.sourceURL == nil {
                 inactiveFileWatchers[id] = FileWatcher(url: url) { [weak self] in
                     self?.markTabUnread(id)
                 }
@@ -980,6 +1043,7 @@ final class DocumentStore: ObservableObject {
             // Last tab closed — back to empty state.
             activeTabID = nil
             fileURL = nil
+            activeRemoteTarget = nil
             rawText = ""
             lastSyncedText = ""
             annotations = []
@@ -1005,6 +1069,7 @@ final class DocumentStore: ObservableObject {
 
     private func loadTabState(_ tab: DocumentTab) {
         fileURL = tab.fileURL
+        self.activeRemoteTarget = tab.sourceURL.flatMap { SSHTarget(sourceURL: $0) }
         rawText = tab.rawText
         lastSyncedText = tab.lastSyncedText
         annotations = tab.annotations
