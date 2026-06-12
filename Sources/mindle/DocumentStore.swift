@@ -634,6 +634,19 @@ final class DocumentStore: ObservableObject {
         }
     }
 
+    /// Manual ↻ for a remote tab: re-fetch the proxy, then run the same
+    /// reload path as a local watcher event so diff-on-reload kicks in when
+    /// the remote file changed underneath us.
+    func reloadRemote() async {
+        guard let target = activeRemoteTarget, let url = fileURL else { return }
+        do {
+            try await SSHTransport.fetch(target, to: url)
+            reloadFromDisk()
+        } catch {
+            presentRemoteError(title: "Couldn’t refresh \(target.canonical)", error: error)
+        }
+    }
+
     private func updateWatcher() {
         fileWatcher?.stop()
         fileWatcher = nil
@@ -1255,6 +1268,20 @@ final class DocumentStore: ObservableObject {
         lastSyncedText = draft
         snapshotActiveTab()
         editingBlock = nil
+
+        // Remote tab: push the just-saved proxy back over SSH. The local
+        // edit is already safe in the proxy; on failure we keep it and let
+        // the user retry rather than losing work.
+        if let target = activeRemoteTarget {
+            let proxy = url
+            Task { @MainActor in
+                do {
+                    try await SSHTransport.push(proxy, to: target)
+                } catch {
+                    presentRemoteError(title: "Saved locally, but couldn’t push to \(target.canonical)", error: error)
+                }
+            }
+        }
     }
 
     private enum DriftResolution {
