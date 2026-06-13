@@ -3,21 +3,24 @@ import Foundation
 func runSSHTransportChecks() async -> Int {
     let c = Checks("SSHTransport")
 
-    // fetchArgs carry BatchMode + ConnectTimeout; quoted remote source; tmp last
+    // fetchArgs carry BatchMode + ConnectTimeout; UNQUOTED remote source
+    // (scp is SFTP-default → literal path); tmp last
     let t = SSHTarget(userHostPath: "fabio@devbox:/a/spec.md")!
     let tmp = URL(fileURLWithPath: "/tmp/x/spec.md.fetch")
     let fargs = SSHTransport.fetchArgs(t, tmp: tmp)
     c.expect(fargs.contains("BatchMode=yes"), "fetchArgs has BatchMode")
     c.expect(fargs.contains("ConnectTimeout=10"), "fetchArgs has ConnectTimeout")
     c.equal(fargs.last, tmp.path, "fetchArgs local tmp last")
-    c.expect(fargs.contains("fabio@devbox:'/a/spec.md'"), "fetchArgs quoted remote source")
+    c.expect(fargs.contains("fabio@devbox:/a/spec.md"), "fetchArgs unquoted remote source")
+    c.expect(!fargs.contains(where: { $0.contains("'") }), "fetchArgs has no shell quotes")
 
-    // pushArgs: local proxy first, quoted remote temp, BatchMode present
+    // pushArgs: local proxy first, UNQUOTED remote temp, BatchMode present
     let proxy = URL(fileURLWithPath: "/tmp/x/spec.md")
     let pargs = SSHTransport.pushArgs(proxy, to: t)
     c.equal(pargs.first, proxy.path, "pushArgs local source first")
-    c.expect(pargs.contains("fabio@devbox:'/a/spec.md.mindle-tmp'"), "pushArgs quoted remote temp")
+    c.expect(pargs.contains("fabio@devbox:/a/spec.md.mindle-tmp"), "pushArgs unquoted remote temp")
     c.expect(pargs.contains("BatchMode=yes"), "pushArgs has BatchMode")
+    c.expect(!pargs.contains(where: { $0.contains("'") }), "pushArgs has no shell quotes")
 
     // remoteMvArgs: userHost present + quoted mv command + BatchMode
     let tSpace = SSHTarget(userHostPath: "fabio@devbox:/a/my notes.md")!

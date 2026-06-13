@@ -58,15 +58,23 @@ enum SSHTransport {
 
     // MARK: Pure argv builders (unit-tested)
 
-    /// `scp <flags> user@host:'/remote/path' <localTmp>`
+    /// `scp <flags> user@host:/remote/path <localTmp>`
+    ///
+    /// The remote path is NOT shell-quoted: modern scp (OpenSSH 9+) defaults
+    /// to the SFTP protocol, which treats the remote path literally (no
+    /// remote shell to strip quotes), and we invoke scp via `Process` (no
+    /// local shell either) — so the whole `host:path` is one argv entry and
+    /// spaces are safe as-is. Quoting it would embed literal `'` characters
+    /// in the filename and fail with "No such file or directory".
     static func fetchArgs(_ target: SSHTarget, tmp: URL) -> [String] {
-        sshFlags + ["\(target.userHost):\(shellSingleQuote(target.remotePath))", tmp.path]
+        sshFlags + ["\(target.userHost):\(target.remotePath)", tmp.path]
     }
 
-    /// `scp <flags> <localProxy> user@host:'/remote/path.mindle-tmp'`
+    /// `scp <flags> <localProxy> user@host:/remote/path.mindle-tmp`
+    /// Remote path unquoted for the same reason as `fetchArgs`.
     static func pushArgs(_ proxy: URL, to target: SSHTarget) -> [String] {
         let remoteTmp = target.remotePath + remoteTmpSuffix
-        return [proxy.path] + sshFlags + ["\(target.userHost):\(shellSingleQuote(remoteTmp))"]
+        return [proxy.path] + sshFlags + ["\(target.userHost):\(remoteTmp)"]
     }
 
     /// `ssh <flags> user@host "mv '/remote/path.tmp' '/remote/path'"`
