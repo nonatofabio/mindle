@@ -241,6 +241,17 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <string>https://nonatofabio.github.io/mindle/appcast.xml</string>
   <key>SUPublicEDKey</key>
   <string>ytbRadXLOaP+tXH1WggjFQn4fCJ89yNbz9LAkSUu5bw=</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.mindle.ssh</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>mindle</string>
+      </array>
+    </dict>
+  </array>
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>

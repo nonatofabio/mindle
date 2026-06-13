@@ -216,16 +216,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ sender: NSApplication, open urls: [URL]) {
-        if let store = activeStore {
-            for url in urls {
+        for url in urls {
+            if let target = SSHTarget(sourceURL: url) {
+                routeRemoteOpen(target)
+            } else if let store = activeStore {
                 store.open(url: url)
+            } else {
+                // Called before any RootView has registered its store; buffer
+                // and replay into the first window that appears.
+                pendingURLs.append(url)
             }
-        } else {
-            // Called before any RootView has registered its store; buffer
-            // and replay into the first window that appears.
-            pendingURLs.append(contentsOf: urls)
         }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Hand a remote target to the active store, or buffer it (as its
+    /// `mindle://ssh` URL) for replay into the first window on cold launch.
+    private func routeRemoteOpen(_ target: SSHTarget) {
+        if let store = activeStore {
+            Task { await store.openRemote(target) }
+        } else if let url = target.sourceURL {
+            pendingURLs.append(url)
+        }
     }
 
     /// MCP-side: open a file at `path` in Mindle. If any window already
@@ -276,7 +288,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pendingURLs.removeAll()
             // Open the first queued URL (the buffered one from cold launch).
             if let first = queued.first {
-                store.open(url: first)
+                if let target = SSHTarget(sourceURL: first) {
+                    Task { await store.openRemote(target) }
+                } else {
+                    store.open(url: first)
+                }
             }
         }
     }
