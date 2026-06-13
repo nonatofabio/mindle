@@ -71,10 +71,13 @@ enum SSHTransport {
     }
 
     /// `scp <flags> <localProxy> user@host:/remote/path.mindle-tmp`
-    /// Remote path unquoted for the same reason as `fetchArgs`.
+    /// Remote path unquoted for the same reason as `fetchArgs`. Flags MUST
+    /// precede the positional source/dest: BSD/macOS `getopt` stops option
+    /// parsing at the first non-option argument, so a leading local path
+    /// would make scp treat `-o …` as extra source files (`stat local "-o"`).
     static func pushArgs(_ proxy: URL, to target: SSHTarget) -> [String] {
         let remoteTmp = target.remotePath + remoteTmpSuffix
-        return [proxy.path] + sshFlags + ["\(target.userHost):\(remoteTmp)"]
+        return sshFlags + [proxy.path, "\(target.userHost):\(remoteTmp)"]
     }
 
     /// `ssh <flags> user@host "mv '/remote/path.tmp' '/remote/path'"`

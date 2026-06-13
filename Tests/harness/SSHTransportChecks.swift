@@ -14,11 +14,15 @@ func runSSHTransportChecks() async -> Int {
     c.expect(fargs.contains("fabio@devbox:/a/spec.md"), "fetchArgs unquoted remote source")
     c.expect(!fargs.contains(where: { $0.contains("'") }), "fetchArgs has no shell quotes")
 
-    // pushArgs: local proxy first, UNQUOTED remote temp, BatchMode present
+    // pushArgs: FLAGS first (BSD getopt stops at first non-option), then
+    // local source, then UNQUOTED remote temp as the final arg
     let proxy = URL(fileURLWithPath: "/tmp/x/spec.md")
     let pargs = SSHTransport.pushArgs(proxy, to: t)
-    c.equal(pargs.first, proxy.path, "pushArgs local source first")
-    c.expect(pargs.contains("fabio@devbox:/a/spec.md.mindle-tmp"), "pushArgs unquoted remote temp")
+    c.equal(pargs.first, "-o", "pushArgs flags precede positionals")
+    c.equal(pargs.last, "fabio@devbox:/a/spec.md.mindle-tmp", "pushArgs remote temp last")
+    let pProxyIdx = pargs.firstIndex(of: proxy.path)
+    let pRemoteIdx = pargs.firstIndex(of: "fabio@devbox:/a/spec.md.mindle-tmp")
+    c.expect(pProxyIdx != nil && pRemoteIdx != nil && pProxyIdx! < pRemoteIdx!, "pushArgs local source before remote dest")
     c.expect(pargs.contains("BatchMode=yes"), "pushArgs has BatchMode")
     c.expect(!pargs.contains(where: { $0.contains("'") }), "pushArgs has no shell quotes")
 
