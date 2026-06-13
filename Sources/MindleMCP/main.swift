@@ -269,13 +269,13 @@ struct MindleMCP {
             ],
             [
                 "name": "open_file",
-                "description": "Open a file in Mindle. If the file is already open in any window, the existing tab is activated; otherwise a new tab is added in the most-recently-active window. Use this to bring a file into the user's attention so you can subsequently annotate it or watch for the user's annotations. Defaults to opening silently in the background — pass focus_app:true to also bring Mindle to the foreground (useful when you specifically want the user to look at the file now).",
+                "description": "Open a file in Mindle. If the file is already open in any window, the existing tab is activated; otherwise a new tab is added in the most-recently-active window. Use this to bring a file into the user's attention so you can subsequently annotate it or watch for the user's annotations. Defaults to opening silently in the background — pass focus_app:true to also bring Mindle to the foreground (useful when you specifically want the user to look at the file now). Accepts remote SSH targets (user@host:/path) in addition to local paths.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
                         "path": [
                             "type": "string",
-                            "description": "Absolute path to a local file. Markdown (.md, .markdown, .txt) and text-based PDF (.pdf) are both supported."
+                            "description": "A local absolute path, OR a remote SSH target as 'user@host:/path' (or a 'mindle://ssh/user@host/path' URL). Remote files are fetched over the user's existing SSH config/keys. Markdown (.md, .markdown, .txt) and text-based PDF are supported."
                         ],
                         "focus_app": [
                             "type": "boolean",

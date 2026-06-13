@@ -273,6 +273,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return (focused: false, url: url)
     }
 
+    /// MCP-side: open a remote SSH target in Mindle. Dedups across windows
+    /// on the canonical target; otherwise opens in the most-recently-active
+    /// store. Returns the canonical target on success, nil if no window.
+    func openFileRemote(target: SSHTarget, focusApp: Bool) async -> (focused: Bool, canonical: String)? {
+        registeredStores.removeAll { $0.store == nil }
+        let source = target.sourceURL
+        for ref in registeredStores {
+            guard let s = ref.store else { continue }
+            if let existing = s.tabs.first(where: { $0.sourceURL == source }) {
+                s.activate(tabID: existing.id)
+                if focusApp { NSApp.activate(ignoringOtherApps: true) }
+                return (focused: true, canonical: target.canonical)
+            }
+        }
+        guard let store = activeStore ?? registeredStores.first?.store else { return nil }
+        await store.openRemote(target)
+        // openRemote surfaces SSH fetch failures via an in-app alert and
+        // creates no tab. Confirm the tab actually opened, so a failed fetch
+        // reports an error to the MCP caller instead of a false success.
+        guard store.tabs.contains(where: { $0.sourceURL == source }) else { return nil }
+        if focusApp { NSApp.activate(ignoringOtherApps: true) }
+        return (focused: false, canonical: target.canonical)
+    }
+
     /// Each window's RootView calls this on appear, so the most recently
     /// active window becomes the target for externally opened URLs.
     /// Also tracks the store in `registeredStores` (weak) so the MCP

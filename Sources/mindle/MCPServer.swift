@@ -353,17 +353,33 @@ final class MCPServer {
                 return ["ok": false, "error": "missing 'path'"]
             }
             let focusApp = (request["focus_app"] as? Bool) ?? false
+
+            // Remote target? Accept a `mindle://ssh/...` URL, or an
+            // scp-style `[user@]host:/path`. Exclude other URL schemes
+            // (http/https/file) and local absolute paths so they fall
+            // through to the existing local-open path.
+            let remote: SSHTarget? = {
+                if let url = URL(string: path), let t = SSHTarget(sourceURL: url) { return t }
+                if path.contains("://") { return nil }
+                if path.hasPrefix("/") { return nil }
+                return SSHTarget(userHostPath: path)
+            }()
+
+            if let target = remote {
+                let delegate = await MainActor.run { AppDelegate.shared }
+                guard let opened = await delegate?.openFileRemote(target: target, focusApp: focusApp) else {
+                    return ["ok": false, "error": "couldn't open remote '\(target.canonical)': SSH fetch failed (check the host, path, and your SSH access), or no Mindle window is open"]
+                }
+                return ["ok": true, "focused": opened.focused, "path": opened.canonical]
+            }
+
             let result = await MainActor.run {
                 AppDelegate.shared?.openFile(path: path, focusApp: focusApp)
             }
             guard let result else {
                 return ["ok": false, "error": "couldn't open: file not found at '\(path)' or no Mindle window is open"]
             }
-            return [
-                "ok": true,
-                "focused": result.focused,
-                "path": result.url.path
-            ]
+            return ["ok": true, "focused": result.focused, "path": result.url.path]
 
         default:
             return ["ok": false, "error": "unknown op: \(op)"]
