@@ -217,6 +217,10 @@ struct EmptyStateView: View {
             Text("…or drop a .md file onto this window")
                 .font(.system(size: 11))
                 .foregroundStyle(c.muted)
+            Link("Read the guide →", destination: URL(string: "https://nonatofabio.github.io/mindle/")!)
+                .font(.system(size: 12, design: .serif))
+                .foregroundStyle(c.accent)
+                .padding(.top, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

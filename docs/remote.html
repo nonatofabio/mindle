@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remote Files — Mindle</title>
+  <meta name="description" content="Open, annotate, and edit Markdown that lives on another machine over SSH — using your own ssh config and keys.">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="doc-page">
+
+  <nav class="nav">
+    <div class="container nav-content">
+      <a href="index.html" class="nav-logo" aria-label="Mindle home">
+        <img src="assets/logo.svg" alt="" class="nav-logo-mark">
+        <span class="nav-logo-text">Mindle</span>
+      </a>
+      <div class="nav-links">
+        <a href="reading.html">Reading</a>
+        <a href="annotations.html">Annotations</a>
+        <a href="agents.html">Agents</a>
+        <a href="editor.html">Editor</a>
+        <a href="remote.html" aria-current="page">Remote</a>
+        <a href="keyboard.html">Keyboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="doc-content container">
+
+    <h1>Remote Files</h1>
+    <p class="doc-lead">Read, annotate, and edit Markdown that lives on another machine — a remote developer desktop, a build box, a server you reach over SSH — without mounting a volume or syncing a folder.</p>
+
+    <h2>Opening a remote file</h2>
+    <p>Three ways in, all pointing at the same place:</p>
+    <ul>
+      <li><strong>File → Open Remote…</strong> or <kbd>⌘⇧O</kbd>. Type an SSH target — <code>user@host:/path/to/notes.md</code> — and press Open.</li>
+      <li><strong>A <code>mindle://ssh</code> link.</strong> From a terminal on your Mac, <code>open 'mindle://ssh/user@host/path/to/notes.md'</code> hands the file straight to Mindle. Handy from scripts or a shell on the remote box itself.</li>
+      <li><strong>An agent.</strong> Over MCP, <code>open_file</code> accepts the same <code>user@host:/path</code> form as a local path, so a collaborator working on the remote machine can ask Mindle to open what it's looking at. See <a href="agents.html">Agents</a>.</li>
+    </ul>
+    <p>A remote tab wears a small network glyph, and a <strong>↻</strong> button sits in the toolbar to re-fetch on demand.</p>
+
+    <h2>It uses your SSH, not Mindle's</h2>
+    <p>Mindle shells out to the <code>ssh</code> and <code>scp</code> already on your Mac. That means your <code>~/.ssh/config</code> host aliases, agent keys, <code>known_hosts</code>, and <code>ProxyJump</code> all apply exactly as they do at the command line — Mindle never sees or stores a credential.</p>
+    <p>Connections are non-interactive (<code>BatchMode</code>) and fail fast: key or agent authentication just works, and a host that would prompt for a password gives you a clear error instead of hanging. If <code>scp user@host:/path .</code> works in your terminal, Open Remote… works.</p>
+
+    <h2>How it works</h2>
+    <p>On open, Mindle fetches the file to a local cache copy and runs <em>the entire normal pipeline</em> on that copy — the markdown renderer, the editor, diff-on-reload, annotations. Nothing in the reader knows or cares that the file came from elsewhere. SSH only touches three edges: open, save, and refresh.</p>
+    <p>The cache copy lives under <code>~/Library/Application&nbsp;Support/Mindle/ssh-cache/</code>, keyed to the remote target. Re-opening the same target re-activates the existing tab instead of fetching again.</p>
+
+    <h2>Editing and saving</h2>
+    <p>Edit a remote file exactly like a local one (<kbd>⌘E</kbd>; see <a href="editor.html">Editor</a>). Save writes your change to the local copy and then pushes it back over SSH, uploading to a temporary file and renaming it into place — so a dropped connection can never leave a half-written file on the far end.</p>
+    <p>The local copy is always authoritative. If the push fails — host down, permission denied — your edit is safe locally and Mindle tells you the push didn't land, rather than pretending it did.</p>
+
+    <h2>Refreshing</h2>
+    <p>Remote tabs don't poll — there's no background SSH chatter while you read. When you want the latest, press <strong>↻</strong> (saving also re-checks). Mindle re-fetches and, if the file changed on the far end, shows the same track-changes overlay you'd get for a local file edited underneath you, so you can review what moved before accepting it. See <a href="reading.html">Reading</a> for the diff overlay.</p>
+
+    <h2>Annotations</h2>
+    <p>Annotations on a remote file are stored on your Mac, in a sidecar keyed to the remote target — so they persist across sessions and re-opens, exactly like local annotations. See <a href="annotations.html">Annotations</a>.</p>
+    <p>For now they're local to your machine: a colleague opening the same remote file in their own Mindle won't see your notes. Shared, co-located annotations are a separate piece of work.</p>
+
+    <h2>Scope</h2>
+    <p>Remote support is deliberately narrow — it adds a transport, not a sync engine.</p>
+    <ul>
+      <li><strong>Manual refresh, not live.</strong> No polling, no watching the remote file. You pull updates with ↻.</li>
+      <li><strong>Annotations stay local.</strong> Keyed to the target, on your machine, not shared between people yet.</li>
+      <li><strong>Key/agent auth.</strong> Password-only hosts aren't supported — set up a key or use your agent.</li>
+      <li><strong>Reading any type, editing text.</strong> Text-based files (Markdown, plain text) round-trip for editing; PDFs open read-only, same as locally.</li>
+    </ul>
+
+    <p class="doc-foot"><a href="index.html">← Back to Mindle</a></p>
+  </main>
+
+</body>
+</html>
