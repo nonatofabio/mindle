@@ -74,6 +74,18 @@ struct ContentView: View {
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
+                if let id = store.activeTabID,
+                   let tab = store.tabs.first(where: { $0.id == id }),
+                   tab.sourceURL?.isMindleSSH == true {
+                    Button {
+                        Task { await store.reloadRemote() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(c.text)
+                    }
+                    .help("Re-fetch this file from the remote host")
+                }
+
                 Button {
                     store.showAnnotations = true
                     store.requestHighlight()
@@ -606,6 +618,12 @@ func displayTitle(for url: URL) -> String {
         return "Clipboard · \(hash.prefix(8))"
     }
     return url.lastPathComponent
+}
+
+extension URL {
+    /// True for the `mindle://ssh/...` URLs Mindle uses to identify remote
+    /// SSH-backed tabs (stored as a tab's `sourceURL`).
+    var isMindleSSH: Bool { scheme == "mindle" && host == "ssh" }
 }
 
 /// Title for the window chrome — preferred over `store.fileURL` directly
@@ -1424,6 +1442,11 @@ struct TabBarItem: View {
     @EnvironmentObject var store: DocumentStore
     @State private var isHovering: Bool = false
 
+    private var remoteTarget: SSHTarget? {
+        tab.sourceURL.flatMap(SSHTarget.init(sourceURL:))
+    }
+    private var isRemoteTab: Bool { tab.sourceURL?.isMindleSSH == true }
+
     var body: some View {
         let c = store.theme.colors
         let isActive = store.activeTabID == tab.id
@@ -1448,9 +1471,10 @@ struct TabBarItem: View {
                             .fill(c.accent)
                             .frame(width: 6, height: 6)
                     } else {
-                        Image(systemName: "doc.text")
+                        Image(systemName: isRemoteTab ? "network" : "doc.text")
                             .font(.system(size: 10))
                             .foregroundStyle(isActive ? c.accent : c.muted)
+                            .help(remoteTarget?.canonical ?? "")
                     }
                     Text(displayTitle(for: tab.sourceURL ?? tab.fileURL))
                         .font(.system(size: 12, design: .serif))

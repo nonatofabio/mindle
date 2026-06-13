@@ -786,6 +786,40 @@ final class DocumentStore: ObservableObject {
         openURL(url)
     }
 
+    /// Prompt for an SSH target (`[user@]host:/path`) and open it remotely.
+    /// Mirrors `openURLWithPrompt` — same NSAlert + accessory-field pattern.
+    func openRemoteWithPrompt() {
+        let alert = NSAlert()
+        alert.messageText = "Open Remote File"
+        alert.informativeText = "Enter an SSH target. Uses your existing SSH config and keys."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open")
+        alert.addButton(withTitle: "Cancel")
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.placeholderString = "user@host:/path/to/file.md"
+        // Auto-fill from clipboard when it already looks like an SSH target.
+        if let pb = NSPasteboard.general.string(forType: .string) {
+            let trimmed = pb.trimmingCharacters(in: .whitespacesAndNewlines)
+            if SSHTarget(userHostPath: trimmed) != nil {
+                field.stringValue = trimmed
+            }
+        }
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let raw = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let target = SSHTarget(userHostPath: raw) else {
+            let invalid = NSAlert()
+            invalid.messageText = "That doesn't look like an SSH target."
+            invalid.informativeText = "Use the form user@host:/absolute/path (the path must be absolute)."
+            invalid.runModal()
+            return
+        }
+        Task { await openRemote(target) }
+    }
+
     /// Open an http(s) URL: fetch the body off-main and open it as a tab
     /// keyed on the URL. Already-open URLs activate instead of refetching.
     func openURL(_ url: URL) {

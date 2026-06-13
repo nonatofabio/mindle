@@ -350,6 +350,9 @@ struct MindleCommands: Commands {
             Button("Open URL…") { store?.openURLWithPrompt() }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(store == nil)
+            Button("Open Remote…") { store?.openRemoteWithPrompt() }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .disabled(store == nil)
             Button("Open from Clipboard") { store?.openFromClipboard() }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
                 .disabled(store == nil)
