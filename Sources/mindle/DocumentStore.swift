@@ -1269,6 +1269,20 @@ final class DocumentStore: ObservableObject {
     /// reload baseline), snapshot the tab, close the editor. The file
     /// watcher's reloadFromDisk fires shortly after — finds text ==
     /// rawText and short-circuits, no echo loop.
+    /// For a remote tab, push the just-written proxy back over SSH. The
+    /// local write is already authoritative; a push failure keeps the local
+    /// copy and surfaces a retryable alert. No-op for local / URL tabs.
+    private func pushIfRemote(_ url: URL) {
+        guard let target = activeRemoteTarget else { return }
+        Task {
+            do {
+                try await SSHTransport.push(url, to: target)
+            } catch {
+                presentRemoteError(title: "Saved locally, but couldn’t push to \(target.canonical)", error: error)
+            }
+        }
+    }
+
     func commitEdit(draft: String) {
         guard let url = fileURL, url.isFileURL,
               let block = editingBlock else {
@@ -1302,20 +1316,7 @@ final class DocumentStore: ObservableObject {
         lastSyncedText = draft
         snapshotActiveTab()
         editingBlock = nil
-
-        // Remote tab: push the just-saved proxy back over SSH. The local
-        // edit is already safe in the proxy; on failure we keep it and let
-        // the user retry rather than losing work.
-        if let target = activeRemoteTarget {
-            let proxy = url
-            Task { @MainActor in
-                do {
-                    try await SSHTransport.push(proxy, to: target)
-                } catch {
-                    presentRemoteError(title: "Saved locally, but couldn’t push to \(target.canonical)", error: error)
-                }
-            }
-        }
+        pushIfRemote(url)
     }
 
     private enum DriftResolution {
@@ -1760,6 +1761,7 @@ final class DocumentStore: ObservableObject {
         rawText = reverted
         do {
             try reverted.write(to: url, atomically: true, encoding: .utf8)
+            pushIfRemote(url)
         } catch {
             NSSound.beep()
         }
@@ -1786,6 +1788,7 @@ final class DocumentStore: ObservableObject {
         rawText = text
         do {
             try text.write(to: url, atomically: true, encoding: .utf8)
+            pushIfRemote(url)
         } catch {
             NSSound.beep()
         }
