@@ -336,6 +336,10 @@ struct MindleApp: App {
         .commands {
             MindleCommands()
         }
+
+        Settings {
+            SettingsView()
+        }
     }
 }
 
@@ -498,14 +502,14 @@ struct MindleCommands: Commands {
 
             Button("Increase Font Size") {
                 guard let store else { return }
-                store.fontScale = min(1.6, store.fontScale + 0.05)
+                store.fontScale = FontScaleSteps.next(after: store.fontScale)
             }
             .keyboardShortcut("+", modifiers: .command)
             .disabled(store == nil)
 
             Button("Decrease Font Size") {
                 guard let store else { return }
-                store.fontScale = max(0.75, store.fontScale - 0.05)
+                store.fontScale = FontScaleSteps.previous(before: store.fontScale)
             }
             .keyboardShortcut("-", modifiers: .command)
             .disabled(store == nil)
