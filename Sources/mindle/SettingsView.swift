@@ -15,7 +15,10 @@ struct SettingsView: View {
                     }
 
                     Slider(
-                        value: $defaultFontScale,
+                        value: Binding(
+                            get: { defaultFontScale },
+                            set: { defaultFontScale = FontScaleSteps.snapToNearest($0) }
+                        ),
                         in: 0.75...1.60,
                         step: 0.05
                     ) {
