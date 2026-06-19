@@ -106,13 +106,13 @@ struct ContentView: View {
                 .disabled(!store.hasSelection)
                 .help("Add note to selection (⌘⇧N)")
 
-                Button { store.fontScale = max(0.75, store.fontScale - 0.05) } label: {
+                Button { store.fontScale = FontScaleSteps.previous(before: store.fontScale) } label: {
                     Image(systemName: "textformat.size.smaller")
                         .foregroundStyle(c.text)
                 }
                 .help("Decrease text size (⌘-)")
 
-                Button { store.fontScale = min(1.6, store.fontScale + 0.05) } label: {
+                Button { store.fontScale = FontScaleSteps.next(after: store.fontScale) } label: {
                     Image(systemName: "textformat.size.larger")
                         .foregroundStyle(c.text)
                 }

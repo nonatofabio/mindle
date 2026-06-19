@@ -252,6 +252,7 @@ final class DocumentStore: ObservableObject {
     /// the fallback for any new doc opened without an override.
     private static let defaultsKeyReadingWidth = "mindle.readingWidth"
     private static let defaultsKeyReadingFont = "mindle.readingFont"
+    private static let defaultsKeyFontScale = "mindle.fontScale"
 
     private static func persistedReadingWidth() -> ReadingWidth {
         if let raw = UserDefaults.standard.string(forKey: defaultsKeyReadingWidth),
@@ -263,6 +264,12 @@ final class DocumentStore: ObservableObject {
         if let raw = UserDefaults.standard.string(forKey: defaultsKeyReadingFont),
            let f = ReadingFont(rawValue: raw) { return f }
         return .serif
+    }
+
+    private static func persistedFontScale() -> Double {
+        let raw = UserDefaults.standard.double(forKey: defaultsKeyFontScale)
+        guard raw > 0 else { return 1.0 }
+        return FontScaleSteps.snapToNearest(raw)
     }
 
     /// Menu-action setter. Updates the visible state *and* persists the
@@ -289,6 +296,7 @@ final class DocumentStore: ObservableObject {
     private func resetReaderPrefsToUserDefaults() {
         readingWidth = Self.persistedReadingWidth()
         readingFont = Self.persistedReadingFont()
+        fontScale = Self.persistedFontScale()
     }
     @Published var showAnnotations: Bool = false
     @Published var showFileBrowser: Bool = false
@@ -1878,7 +1886,7 @@ final class DocumentStore: ObservableObject {
             collaborators = decoded.collaborators ?? [:]
             DebugConsole.shared.log("LOAD: \(annotations.count) annotations, \(collaborators.count) collaborators")
             if let t = decoded.theme { theme = t }
-            if let s = decoded.fontScale { fontScale = s }
+            if let s = decoded.fontScale { fontScale = FontScaleSteps.snapToNearest(s) }
             if let w = decoded.readingWidth { readingWidth = w }
             if let f = decoded.readingFont { readingFont = f }
             if let b = decoded.bionicText { bionicText = b }
