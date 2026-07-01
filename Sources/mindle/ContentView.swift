@@ -1,5 +1,10 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
+
+private extension UTType {
+    static let mindleTab = UTType(exportedAs: "com.fnp.mindle.tab")
+}
 
 struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
@@ -343,7 +348,7 @@ private struct HeadingSpineOverlay: View {
             let track = max(0, proxy.size.height - verticalInset * 2)
             let positions = trackPositions(in: track, headings: headings)
             ZStack(alignment: .topTrailing) {
-                ForEach(Array(headings.enumerated()), id: \.element.id) { idx, h in
+                ForEach(Array(headings.enumerated()), id: \.offset) { idx, h in
                     Rectangle()
                         .fill(idx == active ? c.accent : c.muted.opacity(0.5))
                         .frame(width: tickLength(for: h.level), height: idx == active ? 2 : 1)
@@ -380,7 +385,7 @@ private struct HeadingSpineOverlay: View {
         let headings = store.spineHeadings
         let active = store.spineScroll.activeIndex
         return VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(headings.enumerated()), id: \.element.id) { idx, h in
+            ForEach(Array(headings.enumerated()), id: \.offset) { idx, h in
                 Button {
                     store.scrollToHeading(id: h.id)
                 } label: {
@@ -428,10 +433,10 @@ private struct HeadingSpineOverlay: View {
                 )
                 .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 2)
         )
-        // Slide left of the spine so the two read as connected. The
-        // outer overlay is `.topTrailing`, so we shift left by the
-        // spine's width plus a small gap.
-        .offset(x: -(collapsedWidth + 4), y: verticalInset - 6)
+        // Slide left of the spine so the two read as connected. Keeping
+        // the panel flush with the spine avoids a hover dead-zone while
+        // crossing from the tick column into the labels panel.
+        .offset(x: -collapsedWidth, y: verticalInset - 6)
         .onHover { hovering in
             // Keep the panel mounted while the cursor is over it —
             // without this, hovering off the spine into the panel
@@ -1802,13 +1807,21 @@ struct TabBarItem: View {
         }
         .onHover { isHovering = $0 }
         .onDrag {
-            // The dragged tab's UUID travels as a plain text string.
-            // SwiftUI's NSItemProvider isn't actor-isolated, so we
-            // build the provider on the calling thread.
-            NSItemProvider(object: tab.id.uuidString as NSString)
+            // Use a Mindle-specific UTI so only real tab drags can
+            // activate these drop targets. `.ownProcess` still permits
+            // dragging between multiple Mindle windows.
+            let provider = NSItemProvider()
+            provider.registerDataRepresentation(
+                forTypeIdentifier: UTType.mindleTab.identifier,
+                visibility: .ownProcess
+            ) { completion in
+                completion(Data(tab.id.uuidString.utf8), nil)
+                return nil
+            }
+            return provider
         }
         .onDrop(
-            of: [.text],
+            of: [.mindleTab],
             delegate: TabDropDelegate(
                 target: tab.id,
                 store: store,
@@ -1828,7 +1841,7 @@ private struct TabDropDelegate: DropDelegate {
     @Binding var isTarget: Bool
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.text])
+        info.hasItemsConforming(to: [.mindleTab])
     }
 
     func dropEntered(info: DropInfo) { isTarget = true }
@@ -1836,9 +1849,11 @@ private struct TabDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         isTarget = false
-        guard let provider = info.itemProviders(for: [.text]).first else { return false }
-        provider.loadObject(ofClass: NSString.self) { item, _ in
-            guard let str = item as? String, let id = UUID(uuidString: str) else { return }
+        guard let provider = info.itemProviders(for: [.mindleTab]).first else { return false }
+        provider.loadDataRepresentation(forTypeIdentifier: UTType.mindleTab.identifier) { data, _ in
+            guard let data,
+                  let str = String(data: data, encoding: .utf8),
+                  let id = UUID(uuidString: str) else { return }
             Task { @MainActor in
                 store.moveTab(id: id, before: target)
             }

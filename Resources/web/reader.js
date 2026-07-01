@@ -1108,17 +1108,37 @@
   // wrapping changes heading offsets).
   let headingCache = [];
 
+  function ensureUniqueHeadingID(node, seen) {
+    let id = node.id || "mindle-heading";
+    if (!seen.has(id) && node.id) {
+      seen.add(id);
+      return id;
+    }
+
+    // Keep every spine row scrollable even if the anchor slugger changes
+    // config or a future render path duplicates ids in the DOM.
+    const base = id;
+    let suffix = 2;
+    while (seen.has(id)) {
+      id = `${base}-${suffix++}`;
+    }
+    node.id = id;
+    seen.add(id);
+    return id;
+  }
+
   function publishHeadings() {
     const nodes = doc.querySelectorAll("h1, h2, h3, h4, h5, h6");
     headingCache = [];
     const out = [];
+    const seenIDs = new Set();
     for (const n of nodes) {
       // Skip headings that are inside a diff "removed" block — they're
       // stricken-through history, not navigable structure.
       if (n.closest('[data-diff="removed"]')) continue;
-      const id = n.id || "";
       const text = (n.textContent || "").trim();
       if (!text) continue;
+      const id = ensureUniqueHeadingID(n, seenIDs);
       const top = Math.max(0, Math.round(n.getBoundingClientRect().top + window.scrollY));
       const level = parseInt(n.tagName.slice(1), 10) || 1;
       headingCache.push({ id, top });
@@ -1128,6 +1148,8 @@
   }
 
   function publishScrollState() {
+    if (!headingCache.length) return;
+
     const scrollTop = window.scrollY;
     const viewportHeight = window.innerHeight;
     const contentHeight = Math.max(

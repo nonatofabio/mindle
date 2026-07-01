@@ -147,9 +147,10 @@ struct WebReaderView: NSViewRepresentable {
             }
         }
 
-        if let t = store.scrollToHeadingRequestedAt, t != coord.lastScrollToHeadingAt {
-            coord.lastScrollToHeadingAt = t
-            web.evaluateJavaScript("window.mindleScrollToHeading(\(jsString(store.scrollToHeadingID)));")
+        if let request = store.scrollToHeadingRequest,
+           request.token != coord.lastScrollToHeadingAt {
+            coord.lastScrollToHeadingAt = request.token
+            web.evaluateJavaScript("window.mindleScrollToHeading(\(jsString(request.id)));")
         }
     }
 

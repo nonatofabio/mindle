@@ -178,16 +178,23 @@ struct FileNode: Identifiable, Equatable {
 }
 
 /// One heading entry surfaced by the reader for the floating spine.
+/// `id` is the DOM target the reader will scroll to; `reader.js`
+/// normalizes missing/duplicate heading ids before publishing so every
+/// spine row stays addressable even if the slugger configuration shifts.
 /// `top` is in CSS pixels relative to the document — Swift maps it to
 /// a y-fraction by dividing by `SpineScrollState.contentHeight`.
-struct SpineHeading: Equatable, Identifiable {
+struct SpineHeading: Equatable {
     let id: String
     let text: String
     let level: Int
     let top: CGFloat
 }
 
-/// Scroll geometry for the floating heading spine.
+/// Scroll geometry for the floating heading spine. `scrollTop` and
+/// `viewportHeight` are kept even though the current overlay only reads
+/// `contentHeight` + `activeIndex`; the obvious next step is a visible
+/// viewport-range marker, and keeping one payload avoids splitting the
+/// reader's scroll state across parallel bridge messages.
 struct SpineScrollState: Equatable {
     let scrollTop: CGFloat
     let viewportHeight: CGFloat
@@ -197,6 +204,11 @@ struct SpineScrollState: Equatable {
     static let empty = SpineScrollState(
         scrollTop: 0, viewportHeight: 0, contentHeight: 0, activeIndex: -1
     )
+}
+
+struct ScrollToHeadingRequest: Equatable {
+    let id: String
+    let token: Date
 }
 
 /// One open document inside a window. Active-tab state still lives in
@@ -341,8 +353,7 @@ final class DocumentStore: ObservableObject {
     // both empty, which hides the overlay.
     @Published private(set) var spineHeadings: [SpineHeading] = []
     @Published private(set) var spineScroll: SpineScrollState = .empty
-    @Published var scrollToHeadingRequestedAt: Date? = nil
-    @Published private(set) var scrollToHeadingID: String = ""
+    @Published private(set) var scrollToHeadingRequest: ScrollToHeadingRequest? = nil
 
     // Selection from the web view
     @Published private(set) var selectionText: String = ""
@@ -1915,6 +1926,9 @@ final class DocumentStore: ObservableObject {
         // would otherwise churn the overlay on every render.
         if list == spineHeadings { return }
         spineHeadings = list
+        if list.isEmpty, spineScroll != .empty {
+            spineScroll = .empty
+        }
     }
 
     /// Latest scroll fraction + active-heading index from the reader.
@@ -1924,11 +1938,10 @@ final class DocumentStore: ObservableObject {
     }
 
     /// Bumped to ask the WebReader coordinator to scroll the WKWebView
-    /// to the given heading id. Read-once token: `lastScrollToHeadingAt`
-    /// in the coordinator dedupes repeats.
+    /// to the given heading id. Bundling the id with the token avoids a
+    /// transient "new timestamp, old id" window across two publishes.
     func scrollToHeading(id: String) {
-        scrollToHeadingID = id
-        scrollToHeadingRequestedAt = Date()
+        scrollToHeadingRequest = ScrollToHeadingRequest(id: id, token: Date())
     }
 
     // MARK: - Persistence
