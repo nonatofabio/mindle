@@ -1250,16 +1250,30 @@
     if (!src) return { url: null };
     if (src.startsWith("data:")) return { url: src };
     if (/^https?:/i.test(src)) return { blocked: true };
+    const pathSrc = decodeImagePath(src);
     if (/^file:\/\//i.test(src)) {
-      const path = src.replace(/^file:\/\//i, "");
-      return { url: "mindle-file://" + path };
+      const path = pathSrc.replace(/^file:\/\//i, "");
+      return { url: "mindle-file://" + encodeImagePath(path) };
     }
-    if (src.startsWith("/")) {
-      return { url: "mindle-file://" + encodeURI(src) };
+    if (pathSrc.startsWith("/")) {
+      return { url: "mindle-file://" + encodeImagePath(pathSrc) };
     }
-    if (!baseDir) return { url: src };
-    const resolved = resolveRelativePath(baseDir, src);
-    return { url: "mindle-file://" + encodeURI(resolved) };
+    if (!baseDir) return { url: pathSrc };
+    const resolved = resolveRelativePath(baseDir, pathSrc);
+    return { url: "mindle-file://" + encodeImagePath(resolved) };
+  }
+
+  function decodeImagePath(src) {
+    const path = src.split(/[?#]/, 1)[0];
+    try {
+      return decodeURIComponent(path);
+    } catch (_) {
+      return path;
+    }
+
+    function encodeImagePath(path) {
+      return path.split("/").map(encodeURIComponent).join("/");
+    }
   }
 
   function resolveRelativePath(base, rel) {

@@ -41,7 +41,10 @@ struct WebReaderView: NSViewRepresentable {
         // Re-render whenever rawText OR lastSyncedText changes — the diff
         // pipeline keys off the pair, so a baseline change has to flow
         // through to the view even when rawText is unchanged.
-        if store.rawText != coord.lastSource || store.lastSyncedText != coord.lastSyncedText {
+        if store.rawText != coord.lastSource
+            || store.lastSyncedText != coord.lastSyncedText
+            || store.fileURL != coord.lastFileURL
+            || store.remoteAssetRevision != coord.lastRemoteAssetRevision {
             // Same file, rawText changed → live reload, preserve scroll.
             // Different file (or first load) → fresh load, start at top.
             // Baseline-only change (accept/reject) preserves scroll too.
@@ -49,6 +52,7 @@ struct WebReaderView: NSViewRepresentable {
             coord.lastSource = store.rawText
             coord.lastSyncedText = store.lastSyncedText
             coord.lastFileURL = store.fileURL
+            coord.lastRemoteAssetRevision = store.remoteAssetRevision
             let baseDir = store.fileURL?.deletingLastPathComponent().path ?? ""
             // mindleLoad's third arg is the diff baseline: when it differs
             // from arg one, the JS layer renders track-changes with chips.
@@ -157,6 +161,7 @@ struct WebReaderView: NSViewRepresentable {
         var lastSource: String = ""
         var lastSyncedText: String = ""
         var lastFileURL: URL?
+        var lastRemoteAssetRevision = 0
         var lastTheme: String = ""
         var lastFontScale: Double = 0
         var lastReadingWidth: String = ""

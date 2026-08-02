@@ -220,7 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let target = SSHTarget(sourceURL: url) {
                 routeRemoteOpen(target)
             } else if let store = activeStore {
-                store.open(url: url)
+                store.openItem(url: url)
             } else {
                 // Called before any RootView has registered its store; buffer
                 // and replay into the first window that appears.
@@ -315,7 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let target = SSHTarget(sourceURL: first) {
                     Task { await store.openRemote(target) }
                 } else {
-                    store.open(url: first)
+                    store.openItem(url: first)
                 }
             }
         }
@@ -361,7 +361,7 @@ struct RootView: View {
                 let args = CommandLine.arguments.dropFirst()
                 if store.fileURL == nil,
                    let path = args.first(where: { !$0.hasPrefix("-") }) {
-                    store.open(url: URL(fileURLWithPath: path))
+                    store.openItem(url: URL(fileURLWithPath: path))
                 }
             }
     }
@@ -389,6 +389,9 @@ struct MindleCommands: Commands {
             Divider()
             Button("Open…") { store?.openWithPanel() }
                 .keyboardShortcut("o", modifiers: .command)
+                .disabled(store == nil)
+            Button("Open Folder…") { store?.openDirectoryWithPanel() }
+                .keyboardShortcut("o", modifiers: [.command, .option])
                 .disabled(store == nil)
             OpenRecentMenu(store: store)
             Button("Open URL…") { store?.openURLWithPrompt() }
@@ -487,12 +490,12 @@ struct MindleCommands: Commands {
             Button((store?.showFileBrowser ?? false) ? "Hide Files" : "Show Files") {
                 guard let store else { return }
                 store.showFileBrowser.toggle()
-                if store.showFileBrowser && store.fileTree == nil {
+                if store.showFileBrowser && store.fileBrowser.tree == nil {
                     store.refreshFileTree()
                 }
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
-            .disabled(store?.fileURL == nil)
+            .disabled(store?.fileURL == nil && store?.fileBrowserRootURL == nil)
 
             Button((store?.showAnnotations ?? false) ? "Hide Annotations" : "Show Annotations") {
                 store?.showAnnotations.toggle()

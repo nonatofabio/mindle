@@ -16,10 +16,6 @@ extension URL {
     }
 }
 
-enum ReaderTheme: String, CaseIterable, Codable {
-    case light, sepia, dark
-}
-
 /// What kind of document is in the active tab — picks the renderer pipeline.
 /// Markdown flows through the WKWebView + markdown-it pipeline; PDF flows
 /// through the native PDFKit pipeline. Derived from the file URL's extension
@@ -169,14 +165,6 @@ enum AnnotationStatus: String, Codable {
     case open, resolved, wontfix
 }
 
-struct FileNode: Identifiable, Equatable {
-    var id: URL { url }
-    let url: URL
-    let name: String
-    let isDirectory: Bool
-    let children: [FileNode]?   // nil = leaf file; non-nil = directory
-}
-
 /// One open document inside a window. Active-tab state still lives in
 /// the window-scoped @Published vars (`fileURL`, `rawText`, `annotations`,
 /// `lastSyncedText`) so all existing features keep working untouched;
@@ -300,7 +288,11 @@ final class DocumentStore: ObservableObject {
     }
     @Published var showAnnotations: Bool = false
     @Published var showFileBrowser: Bool = false
-    @Published var fileTree: FileNode? = nil
+    @Published private(set) var fileBrowserRootURL: URL?
+    @Published private(set) var remoteAssetRevision: Int = 0
+    private var fileBrowserRootIsExplicit = false
+    private var activeRemoteProfile: SSHProfile?
+    let fileBrowser = FileBrowserState()
 
     // Tabs (per-window). Empty when no document is open; otherwise the active
     // tab's state mirrors `fileURL` / `rawText` / `annotations` above.
@@ -510,6 +502,43 @@ final class DocumentStore: ObservableObject {
         }
     }
 
+    func openDirectoryWithPanel() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Open"
+        if panel.runModal() == .OK, let url = panel.url {
+            openDirectory(url: url)
+        }
+    }
+
+    func openItem(url: URL) {
+        var isDirectory: ObjCBool = false
+        if url.isFileURL,
+           FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+           isDirectory.boolValue {
+            openDirectory(url: url)
+        } else {
+            open(url: url)
+        }
+    }
+
+    func openDirectory(url: URL) {
+        var isDirectory: ObjCBool = false
+        guard url.isFileURL,
+              FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue,
+              FileManager.default.isReadableFile(atPath: url.path) else {
+            NSSound.beep()
+            return
+        }
+
+        setFileBrowserRoot(url, isExplicit: true)
+        syncFileBrowserSelection(for: fileURL)
+        showFileBrowser = true
+    }
+
     func open(url: URL) {
         // Already open in this window? Switch to its tab without re-reading.
         if let existing = tabs.first(where: { $0.fileURL == url }) {
@@ -522,8 +551,12 @@ final class DocumentStore: ObservableObject {
             // the markdown pipeline (markdown-it, search, highlight, diff)
             // doesn't try to do anything with the binary PDF bytes.
             let kind = DocumentKind.kind(for: url)
-            let text: String = (kind == .pdf) ? "" : try String(contentsOf: url, encoding: .utf8)
-            finishOpen(url: url, text: text, kind: kind, sourceURL: nil, remoteTarget: nil)
+            let text: String = try PerformanceTrace.measure("LocalFileRead") {
+                (kind == .pdf) ? "" : try String(contentsOf: url, encoding: .utf8)
+            }
+            PerformanceTrace.measure("FileOpenApply") {
+                finishOpen(url: url, text: text, kind: kind, sourceURL: nil, remoteTarget: nil)
+            }
         } catch {
             NSSound.beep()
         }
@@ -537,8 +570,12 @@ final class DocumentStore: ObservableObject {
         // Re-root the file tree only when the new file is outside the current scope.
         // Clicking a file inside a subfolder of the current root must preserve rooting.
         let shouldRebuildTree: Bool
-        if let root = fileTree?.url {
-            shouldRebuildTree = !Self.isDescendant(url: url, of: root)
+        if remoteTarget != nil {
+            shouldRebuildTree = false
+        } else if fileBrowserRootIsExplicit {
+            shouldRebuildTree = false
+        } else if let root = fileBrowserRootURL {
+            shouldRebuildTree = !FileTreeBuilder.isDescendant(url, of: root)
         } else {
             shouldRebuildTree = true
         }
@@ -571,7 +608,14 @@ final class DocumentStore: ObservableObject {
         // Capture the sidecar-loaded annotations into the tab snapshot.
         snapshotActiveTab()
 
-        if shouldRebuildTree { refreshFileTree() }
+        if shouldRebuildTree {
+            setFileBrowserRoot(url.deletingLastPathComponent(), isExplicit: false)
+        }
+        if remoteTarget == nil {
+            syncFileBrowserSelection(for: url)
+        } else {
+            fileBrowser.setSelectedURL(sourceURL)
+        }
         if url.isFileURL && remoteTarget == nil {
             NSDocumentController.shared.noteNewRecentDocumentURL(url)
         }
@@ -594,6 +638,7 @@ final class DocumentStore: ObservableObject {
         }
         let proxy = target.proxyURL(cacheDir: cacheDir)
         do {
+            try target.migrateLegacyCacheIfNeeded(cacheDir: cacheDir)
             try await SSHTransport.fetch(target, to: proxy)
             // A concurrent openRemote for the same target may have created
             // the tab while our fetch was in flight (the pre-await dedup
@@ -603,7 +648,16 @@ final class DocumentStore: ObservableObject {
             }
             let kind = DocumentKind.kind(for: proxy)
             let text: String = (kind == .pdf) ? "" : try String(contentsOf: proxy, encoding: .utf8)
+            let assetFailures = kind == .markdown
+                ? await SSHTransport.fetchReferencedImages(
+                    in: text,
+                    for: target,
+                    cacheDir: cacheDir
+                )
+                : []
+            remoteAssetRevision &+= 1
             finishOpen(url: proxy, text: text, kind: kind, sourceURL: source, remoteTarget: target)
+            presentRemoteAssetFailures(assetFailures, target: target)
         } catch {
             presentRemoteError(title: "Couldn’t open \(target.canonical)", error: error)
         }
@@ -614,6 +668,20 @@ final class DocumentStore: ObservableObject {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    private func presentRemoteAssetFailures(
+        _ failures: [RemoteAssetFetchFailure],
+        target: SSHTarget
+    ) {
+        guard !failures.isEmpty else { return }
+        let preview = failures.prefix(3).map { "• \($0.path): \($0.message)" }.joined(separator: "\n")
+        let remainder = failures.count > 3 ? "\n…and \(failures.count - 3) more." : ""
+        let alert = NSAlert()
+        alert.messageText = "Opened \(target.canonical), but some images couldn’t be fetched"
+        alert.informativeText = preview + remainder
         alert.alertStyle = .warning
         alert.runModal()
     }
@@ -646,10 +714,27 @@ final class DocumentStore: ObservableObject {
     /// reload path as a local watcher event so diff-on-reload kicks in when
     /// the remote file changed underneath us.
     func reloadRemote() async {
-        guard let target = activeRemoteTarget, let url = fileURL else { return }
+        guard let target = activeRemoteTarget,
+              let url = fileURL,
+              let cacheDir = Self.sshCacheDir() else { return }
         do {
             try await SSHTransport.fetch(target, to: url)
-            reloadFromDisk()
+            let kind = DocumentKind.kind(for: url)
+            let text = kind == .markdown
+                ? try String(contentsOf: url, encoding: .utf8)
+                : ""
+            let assetFailures = kind == .markdown
+                ? await SSHTransport.fetchReferencedImages(
+                    in: text,
+                    for: target,
+                    cacheDir: cacheDir
+                )
+                : []
+            remoteAssetRevision &+= 1
+            if kind == .markdown {
+                reloadFromDisk()
+            }
+            presentRemoteAssetFailures(assetFailures, target: target)
         } catch {
             presentRemoteError(title: "Couldn’t refresh \(target.canonical)", error: error)
         }
@@ -856,6 +941,7 @@ final class DocumentStore: ObservableObject {
         let newTabID = newTab.id
         activeTabID = newTabID
         fileURL = url
+        fileBrowser.setSelectedURL(nil)
         rawText = placeholder
         lastSyncedText = placeholder
         annotations = []
@@ -920,6 +1006,7 @@ final class DocumentStore: ObservableObject {
         tabs.append(newTab)
         activeTabID = newTab.id
         fileURL = url
+        fileBrowser.setSelectedURL(nil)
         rawText = raw
         lastSyncedText = raw
         annotations = []
@@ -985,6 +1072,7 @@ final class DocumentStore: ObservableObject {
                 tabs[idx].lastSyncedText = ""
                 if activeTabID == tabID {
                     fileURL = cacheURL
+                    fileBrowser.setSelectedURL(nil)
                     rawText = ""
                     lastSyncedText = ""
                     resetReaderPrefsToUserDefaults()
@@ -1098,6 +1186,7 @@ final class DocumentStore: ObservableObject {
             // Last tab closed — back to empty state.
             activeTabID = nil
             fileURL = nil
+            fileBrowser.setSelectedURL(nil)
             activeRemoteTarget = nil
             rawText = ""
             lastSyncedText = ""
@@ -1124,6 +1213,11 @@ final class DocumentStore: ObservableObject {
 
     private func loadTabState(_ tab: DocumentTab) {
         fileURL = tab.fileURL
+        if tab.sourceURL?.isMindleSSH == true {
+            fileBrowser.setSelectedURL(tab.sourceURL)
+        } else {
+            syncFileBrowserSelection(for: tab.fileURL)
+        }
         self.activeRemoteTarget = tab.sourceURL.flatMap { SSHTarget(sourceURL: $0) }
         rawText = tab.rawText
         lastSyncedText = tab.lastSyncedText
@@ -1172,48 +1266,89 @@ final class DocumentStore: ObservableObject {
 
     // MARK: - File browser
 
-    static let browsableExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt", "pdf"]
-
     func refreshFileTree() {
-        guard let url = fileURL else { fileTree = nil; return }
-        fileTree = Self.buildTree(at: url.deletingLastPathComponent())
-    }
-
-    private static func isDescendant(url: URL, of ancestor: URL) -> Bool {
-        let aPath = ancestor.standardizedFileURL.path
-        let uPath = url.standardizedFileURL.path
-        let prefix = aPath.hasSuffix("/") ? aPath : aPath + "/"
-        return uPath.hasPrefix(prefix)
-    }
-
-    private static func buildTree(at dir: URL) -> FileNode? {
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
-            at: dir,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return FileNode(url: dir, name: dir.lastPathComponent, isDirectory: true, children: [])
+        if let profile = activeRemoteProfile {
+            Task { await openSSHProfile(profile) }
+        } else {
+            fileBrowser.refresh()
         }
+    }
 
-        var children: [FileNode] = []
-        for entry in entries {
-            let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            if isDir {
-                if let sub = buildTree(at: entry), !(sub.children ?? []).isEmpty {
-                    children.append(sub)
-                }
-            } else if browsableExtensions.contains(entry.pathExtension.lowercased()) {
-                children.append(FileNode(url: entry, name: entry.lastPathComponent, isDirectory: false, children: nil))
+    func openBrowserItem(_ url: URL) {
+        if let target = SSHTarget(sourceURL: url) {
+            Task { await openRemote(target) }
+        } else {
+            open(url: url)
+        }
+    }
+
+    func openFavoriteSSHProfile() async {
+        do {
+            let profiles = try SSHProfileConfiguration.load()
+            guard let profile = SSHProfileConfiguration.favoriteProfile(in: profiles) else {
+                throw SSHProfileConfigurationError.noProfiles
+            }
+            await openSSHProfile(profile)
+        } catch {
+            presentRemoteError(title: "Couldn’t open favorite SSH profile", error: error)
+        }
+    }
+
+    func openSSHProfile(_ profile: SSHProfile) async {
+        activeRemoteProfile = profile
+        fileBrowserRootIsExplicit = true
+        fileBrowserRootURL = profile.rootTarget.sourceURL
+        let generation = fileBrowser.beginRemoteLoad(profile: profile)
+        showFileBrowser = true
+        do {
+            let listing = try await SSHTransport.listDocuments(in: profile)
+            let applied = fileBrowser.finishRemoteLoad(
+                profile: profile,
+                listing: listing,
+                generation: generation
+            )
+            if applied {
+                fileBrowserRootURL = listing.root.sourceURL
+            }
+            let rootPrefix = listing.root.remotePath.hasSuffix("/")
+                ? listing.root.remotePath
+                : listing.root.remotePath + "/"
+            if applied,
+               let target = activeRemoteTarget,
+               target.userHost == listing.root.userHost,
+               (target.remotePath == listing.root.remotePath
+                   || target.remotePath.hasPrefix(rootPrefix)) {
+                fileBrowser.setSelectedURL(target.sourceURL)
+            }
+        } catch {
+            let applied = fileBrowser.failRemoteLoad(
+                profile: profile,
+                message: error.localizedDescription,
+                generation: generation
+            )
+            if applied {
+                presentRemoteError(title: "Couldn’t open SSH profile “\(profile.name)”", error: error)
             }
         }
+    }
 
-        children.sort { a, b in
-            if a.isDirectory != b.isDirectory { return a.isDirectory }
-            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+    private func setFileBrowserRoot(_ url: URL?, isExplicit: Bool) {
+        let normalized = url?.standardizedFileURL
+        activeRemoteProfile = nil
+        fileBrowserRootIsExplicit = normalized != nil && isExplicit
+        fileBrowserRootURL = normalized
+        fileBrowser.setRoot(normalized)
+    }
+
+    private func syncFileBrowserSelection(for url: URL?) {
+        guard let url,
+              url.isFileURL,
+              let root = fileBrowserRootURL,
+              FileTreeBuilder.isDescendant(url, of: root) else {
+            fileBrowser.setSelectedURL(nil)
+            return
         }
-
-        return FileNode(url: dir, name: dir.lastPathComponent, isDirectory: true, children: children)
+        fileBrowser.setSelectedURL(url)
     }
 
     func toggleTheme() {

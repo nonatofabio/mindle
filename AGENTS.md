@@ -147,6 +147,8 @@ Skills worth writing for this repo specifically (not yet authored):
 
 ## Build & run
 
+Agent-run commands must always have an explicit bounded timeout. Use 30 seconds for quick inspection commands, 2–4 minutes for tests, and at most 5 minutes for a full build. If a command exceeds its bound, stop it, report the timeout, and investigate rather than leaving an unbounded process running.
+
 ```bash
 ./build.sh           # produces build/Mindle.app
 open build/Mindle.app

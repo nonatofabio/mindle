@@ -1,7 +1,14 @@
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @AppStorage("mindle.fontScale") private var defaultFontScale: Double = 1.0
+    @AppStorage(BrowserDisplaySettings.showGitChangesKey) private var showGitChanges = true
+    @AppStorage(BrowserDisplaySettings.showLastEditedKey) private var showLastEdited = true
+    @AppStorage(BrowserDisplaySettings.highlightActiveFileKey) private var highlightActiveFile = true
+    @State private var sshProfiles: [SSHProfile] = []
+    @State private var sshProfilesError: String?
+    @State private var sshProfilesURL: URL?
 
     var body: some View {
         Form {
@@ -35,8 +42,77 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+
+            Section("File Browser") {
+                Toggle("Show Git additions and deletions", isOn: $showGitChanges)
+                Toggle("Show last edited from Git history", isOn: $showLastEdited)
+                Toggle("Highlight the active file", isOn: $highlightActiveFile)
+            }
+
+            Section("SSH Profiles") {
+                if let error = sshProfilesError {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(sshProfiles) { profile in
+                        HStack(spacing: 10) {
+                            Image(systemName: profile.favorite ? "star.fill" : "server.rack")
+                                .foregroundStyle(profile.favorite ? .yellow : .secondary)
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(profile.name)
+                                Text("\(profile.hostname):\(profile.rootPath)")
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if profile.favorite {
+                                Text("Favorite")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                HStack {
+                    Button("Open YAML") {
+                        if let url = sshProfilesURL {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .disabled(sshProfilesURL == nil)
+
+                    Button("Reload") {
+                        loadSSHProfiles()
+                    }
+
+                    Spacer()
+                    if let url = sshProfilesURL {
+                        Text(url.path)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .frame(width: 450)
+        .onAppear {
+            loadSSHProfiles()
+        }
+    }
+
+    private func loadSSHProfiles() {
+        do {
+            sshProfilesURL = try SSHProfileConfiguration.ensureConfigExists()
+            sshProfiles = try SSHProfileConfiguration.load()
+            sshProfilesError = nil
+        } catch {
+            sshProfiles = []
+            sshProfilesError = error.localizedDescription
+        }
     }
 }

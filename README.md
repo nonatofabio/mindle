@@ -70,9 +70,11 @@ Requires **macOS 14+** and **Xcode Command Line Tools** (`xcode-select --install
 
 ### Workflow
 - **Tabs and multi-window** — open many files in one window (`⌘O` adds a tab) or pop a new window with `⌘N`. Each tab carries its own scroll, theme, font scale, and collaborator registry. `⌘W` closes the active tab when more than one is open, otherwise the window.
+- **Open a folder** — `⌘⌥O` opens a local directory directly. Mindle shows its supported documents in the existing file sidebar and waits for you to choose one; the directory remains the window's scope for the rest of that window session.
+- **SSH profiles** — the network button at the top left opens the favorite profile from `~/Library/Application Support/Mindle/ssh-profiles.yaml`. Each entry under `profiles:` has `name`, `hostname`, absolute `path`, and optional `favorite: true` fields. If the configured path does not exist, Mindle opens the remote user's home directory (`$HOME`) instead; an existing but unreadable path remains an error. Mindle lists supported documents without copying the whole workspace, then fetches the selected file and any relative Markdown images into a matching local cache layout. Open or reload the YAML from **Mindle → Settings → SSH Profiles**.
 - **Open remote URLs** — `⌘⇧L` opens any `http(s)` URL pointing at raw Markdown (a GitHub raw link, a hosted doc) as a tab. Annotations on URL documents persist locally keyed by URL hash, so re-opening the same URL brings the annotations back.
 - **Open from Clipboard** — `⌘⇧V` opens the pasteboard contents as a Markdown tab. Use this when the source is behind a login your browser already handles (internal GitLab raw, Confluence, anything auth-walled): copy the raw Markdown there, paste it here. Tabs are content-addressed, so re-pasting identical text re-opens the same tab with its prior annotations.
-- **File browser** — scoped sidebar tree of every `.md` and `.txt` in the current folder (`⌘⇧F`). Never escapes upward.
+- **File browser** — fast, scoped sidebar tree of `.md`, `.markdown`, `.mdown`, `.mkd`, `.txt`, and `.pdf` files (`⌘⇧F`). Tree scanning and batched Git metadata run off the main thread, and rows are rendered lazily, so large documentation folders remain responsive. Changed files show working-tree `+ / −` counts, tracked files show a compact last-commit age, and the active tab gets a stronger row highlight. All three cues are enabled by default and independently configurable under **Mindle → Settings → File Browser**. The browser never escapes above its selected root.
 - **Find in document** — live search with match count, `⌘F` / `⌘G` / `⌘⇧G`.
 - **Live reload** — external edits (vim, an agent, Dropbox, anything) re-render automatically. Bursty writes are debounced; scroll position is preserved. Sidecar changes (a teammate's annotation arriving via shared folder or `git pull`) flow in the same way.
 - **Diff-on-reload** — when an external write changes the active file, Mindle renders the change as a Word-style track-changes overlay you can ✓ Keep or ✗ Revert per chunk, or whole-document with `⌘⌥⏎` / `⌘⌥⌫`. Diffs run a second pass at word granularity inside each line, so you see just the changed words struck or underlined — not the whole line.
@@ -114,6 +116,7 @@ See [Agent Collaboration](#agent-collaboration) below for setup.
 | Shortcut | Action |
 |----------|--------|
 | `⌘O` | Open a file (adds a tab if a window is open) |
+| `⌘⌥O` | Open a folder in the file sidebar |
 | `⌘N` | New window |
 | `⌘W` | Close active tab (or window, when only one tab is open) |
 | `⌘F` | Find in document |

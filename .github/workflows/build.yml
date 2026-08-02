@@ -34,6 +34,12 @@ jobs:
         # letting us keep a macOS 14 deployment target in build.sh.
         run: sudo xcode-select -s /Applications/Xcode_26.2.app || sudo xcode-select -s /Applications/Xcode.app
 
+      - name: Run logic and screenshot tests
+        run: |
+          chmod +x run-tests.sh run-screenshot-tests.sh
+          ./run-tests.sh
+          ./run-screenshot-tests.sh
+
       - name: Import signing certificate
         if: env.SIGN_IDENTITY != '' && env.IS_RELEASE_EVENT == 'true'
         env:

@@ -2,6 +2,11 @@ import Foundation
 
 struct ProcessResult { let status: Int32; let stdout: Data; let stderr: Data }
 
+struct RemoteAssetFetchFailure: Equatable {
+    let path: String
+    let message: String
+}
+
 /// Runs an external process. Behind a protocol so tests inject a fake —
 /// real ssh/scp I/O is not unit-testable.
 protocol ProcessRunner {
@@ -16,13 +21,43 @@ struct SystemProcessRunner: ProcessRunner {
             proc.arguments = arguments
             let out = Pipe(); let err = Pipe()
             proc.standardOutput = out; proc.standardError = err
-            proc.terminationHandler = { p in
-                let o = out.fileHandleForReading.readDataToEndOfFile()
-                let e = err.fileHandleForReading.readDataToEndOfFile()
-                cont.resume(returning: ProcessResult(status: p.terminationStatus, stdout: o, stderr: e))
-            }
-            do { try proc.run() } catch {
+            do {
+                try proc.run()
+            } catch {
                 cont.resume(throwing: SSHTransportError.launchFailed(error.localizedDescription))
+                return
+            }
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                let reads = DispatchGroup()
+                let lock = NSLock()
+                var stdout = Data()
+                var stderr = Data()
+
+                reads.enter()
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let data = out.fileHandleForReading.readDataToEndOfFile()
+                    lock.lock()
+                    stdout = data
+                    lock.unlock()
+                    reads.leave()
+                }
+                reads.enter()
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let data = err.fileHandleForReading.readDataToEndOfFile()
+                    lock.lock()
+                    stderr = data
+                    lock.unlock()
+                    reads.leave()
+                }
+
+                proc.waitUntilExit()
+                reads.wait()
+                cont.resume(returning: ProcessResult(
+                    status: proc.terminationStatus,
+                    stdout: stdout,
+                    stderr: stderr
+                ))
             }
         }
     }
@@ -31,6 +66,7 @@ struct SystemProcessRunner: ProcessRunner {
 enum SSHTransportError: Error, LocalizedError {
     case nonZeroExit(status: Int32, stderr: String)
     case launchFailed(String)
+    case invalidListing
 
     var errorDescription: String? {
         switch self {
@@ -39,6 +75,8 @@ enum SSHTransportError: Error, LocalizedError {
             return trimmed.isEmpty ? "SSH command failed." : trimmed
         case .launchFailed(let m):
             return "Couldn't launch ssh/scp: \(m)"
+        case .invalidListing:
+            return "SSH returned an invalid file listing."
         }
     }
 }
@@ -50,6 +88,8 @@ enum SSHTransport {
     static let scpPath = "/usr/bin/scp"
     static let sshPath = "/usr/bin/ssh"
     static let remoteTmpSuffix = ".mindle-tmp"
+    static let listingRootMarker = "\u{1e}MINDLE_ROOT\u{1e}"
+    private static let cacheWriteLock = NSLock()
 
     /// POSIX single-quote: wrap in '…', escaping embedded ' as '\''.
     static func shellSingleQuote(_ s: String) -> String {
@@ -89,6 +129,20 @@ enum SSHTransport {
         return sshFlags + [target.userHost, cmd]
     }
 
+    static func listDocumentsArgs(_ profile: SSHProfile) -> [String] {
+        let extensions = FileTreeBuilder.browsableExtensions.sorted().map {
+            "-iname \(shellSingleQuote("*.\($0)"))"
+        }.joined(separator: " -o ")
+        let configuredRoot = shellSingleQuote(profile.rootPath)
+        let command = """
+        root=\(configuredRoot); \
+        if [ ! -d "$root" ]; then root=$HOME; fi; \
+        printf '\\036MINDLE_ROOT\\036%s\\0' "$root"; \
+        find "$root" -path '*/.*' -prune -o -type f \\( \(extensions) \\) -print0
+        """
+        return sshFlags + [profile.hostname, command]
+    }
+
     // MARK: Operations
 
     /// Fetch the remote file to `proxyURL` atomically: scp to a sibling
@@ -97,16 +151,84 @@ enum SSHTransport {
     static func fetch(_ target: SSHTarget, to proxyURL: URL, runner: ProcessRunner = SystemProcessRunner()) async throws {
         let fm = FileManager.default
         try fm.createDirectory(at: proxyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let tmp = proxyURL.appendingPathExtension("fetch")
-        try? fm.removeItem(at: tmp)
+        let tmp = proxyURL.appendingPathExtension("fetch-\(UUID().uuidString)")
         let res = try await runner.run(launchPath: scpPath, arguments: fetchArgs(target, tmp: tmp))
         guard res.status == 0 else {
             try? fm.removeItem(at: tmp)
             throw SSHTransportError.nonZeroExit(status: res.status,
                   stderr: String(data: res.stderr, encoding: .utf8) ?? "")
         }
-        if fm.fileExists(atPath: proxyURL.path) { try fm.removeItem(at: proxyURL) }
-        try fm.moveItem(at: tmp, to: proxyURL)
+        try cacheWriteLock.withLock {
+            if fm.fileExists(atPath: proxyURL.path) {
+                try fm.removeItem(at: proxyURL)
+            }
+            try fm.moveItem(at: tmp, to: proxyURL)
+        }
+    }
+
+    static func listDocuments(
+        in profile: SSHProfile,
+        runner: ProcessRunner = SystemProcessRunner()
+    ) async throws -> RemoteDocumentListing {
+        let result = try await runner.run(
+            launchPath: sshPath,
+            arguments: listDocumentsArgs(profile)
+        )
+        guard result.status == 0 else {
+            throw SSHTransportError.nonZeroExit(
+                status: result.status,
+                stderr: String(data: result.stderr, encoding: .utf8) ?? ""
+            )
+        }
+
+        let output = String(data: result.stdout, encoding: .utf8) ?? ""
+        let tokens = output.split(separator: "\0", omittingEmptySubsequences: true).map(String.init)
+        guard let rootPath = tokens.compactMap({ token -> String? in
+            guard let marker = token.range(of: listingRootMarker) else { return nil }
+            return String(token[marker.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }).first,
+              let root = SSHTarget(userHost: profile.hostname, remotePath: rootPath) else {
+            throw SSHTransportError.invalidListing
+        }
+
+        let rootPrefix = root.remotePath.hasSuffix("/")
+            ? root.remotePath
+            : root.remotePath + "/"
+        let files = tokens.compactMap { token -> SSHTarget? in
+                guard !token.contains(listingRootMarker) else { return nil }
+                let path = token.trimmingCharacters(in: .newlines)
+                guard path.hasPrefix(rootPrefix) else { return nil }
+                return SSHTarget(userHost: root.userHost, remotePath: path)
+            }
+            .sorted { $0.remotePath.localizedCaseInsensitiveCompare($1.remotePath) == .orderedAscending }
+        return RemoteDocumentListing(root: root, files: files)
+    }
+
+    static func fetchReferencedImages(
+        in markdown: String,
+        for document: SSHTarget,
+        cacheDir: URL,
+        runner: ProcessRunner = SystemProcessRunner()
+    ) async -> [RemoteAssetFetchFailure] {
+        var failures: [RemoteAssetFetchFailure] = []
+        for relativePath in RemoteMarkdownAssets.relativePaths(in: markdown) {
+            guard let target = RemoteMarkdownAssets.target(
+                for: relativePath,
+                from: document
+            ) else {
+                continue
+            }
+            do {
+                try await fetch(target, to: target.proxyURL(cacheDir: cacheDir), runner: runner)
+            } catch {
+                failures.append(RemoteAssetFetchFailure(
+                    path: relativePath,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+        return failures
     }
 
     /// Upload `proxyURL` to a remote temp path, then remote-`mv` it onto the

@@ -294,12 +294,17 @@ struct PDFReaderView: NSViewRepresentable {
         guard let url = store.fileURL, url.isFileURL else {
             view.document = nil
             context.coordinator.lastLoadedURL = nil
+            context.coordinator.lastLoadedRemoteRevision = nil
             return
         }
-        if context.coordinator.lastLoadedURL == url { return }
+        if context.coordinator.lastLoadedURL == url,
+           context.coordinator.lastLoadedRemoteRevision == store.remoteAssetRevision {
+            return
+        }
         if let doc = PDFDocument(url: url) {
             view.document = doc
             context.coordinator.lastLoadedURL = url
+            context.coordinator.lastLoadedRemoteRevision = store.remoteAssetRevision
             // Document loads can outpace the first layout pass — fit-width
             // again now that the page dimensions are known.
             view.applyFitWidth()
@@ -307,6 +312,7 @@ struct PDFReaderView: NSViewRepresentable {
         } else {
             view.document = nil
             context.coordinator.lastLoadedURL = nil
+            context.coordinator.lastLoadedRemoteRevision = nil
             store.pdfStatus = .unloadable
         }
     }
@@ -314,6 +320,7 @@ struct PDFReaderView: NSViewRepresentable {
     final class Coordinator {
         weak var view: FitWidthPDFView?
         var lastLoadedURL: URL?
+        var lastLoadedRemoteRevision: Int?
         var lastFontScale: CGFloat = 0
         var lastFitWidthAt: Date?
         var lastHighlightAt: Date?
