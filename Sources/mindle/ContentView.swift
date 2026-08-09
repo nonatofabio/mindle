@@ -2,10 +2,6 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-private extension UTType {
-    static let mindleTab = UTType(exportedAs: "com.fnp.mindle.tab")
-}
-
 struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
 
@@ -1668,7 +1664,7 @@ struct TabBar: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onDrop(
-                    of: [.mindleTab],
+                    of: [.text],
                     delegate: TrailingTabDropDelegate(
                         store: store,
                         isTarget: $isTrailingDropTarget
@@ -1697,7 +1693,7 @@ private struct TrailingTabDropDelegate: DropDelegate {
     @Binding var isTarget: Bool
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.mindleTab])
+        info.hasItemsConforming(to: [.text])
     }
 
     func dropEntered(info: DropInfo) { isTarget = true }
@@ -1705,10 +1701,9 @@ private struct TrailingTabDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         isTarget = false
-        guard let provider = info.itemProviders(for: [.mindleTab]).first else { return false }
-        provider.loadDataRepresentation(forTypeIdentifier: UTType.mindleTab.identifier) { data, _ in
-            guard let data,
-                  let str = String(data: data, encoding: .utf8),
+        guard let provider = info.itemProviders(for: [.text]).first else { return false }
+        provider.loadObject(ofClass: NSString.self) { item, _ in
+            guard let str = item as? String,
                   let id = UUID(uuidString: str) else { return }
             Task { @MainActor in
                 store.moveTabToEnd(id: id)
@@ -1809,21 +1804,17 @@ struct TabBarItem: View {
         }
         .onHover { isHovering = $0 }
         .onDrag {
-            // Use a Mindle-specific UTI so only real tab drags can
-            // activate these drop targets. `.ownProcess` still permits
-            // dragging between multiple Mindle windows.
-            let provider = NSItemProvider()
-            provider.registerDataRepresentation(
-                forTypeIdentifier: UTType.mindleTab.identifier,
-                visibility: .ownProcess
-            ) { completion in
-                completion(Data(tab.id.uuidString.utf8), nil)
-                return nil
-            }
-            return provider
+            // Plain-text transport, on purpose. A Mindle-specific UTI
+            // would be cleaner, but SwiftUI's onDrop on macOS never
+            // activates drop targets for custom item-provider UTIs
+            // (verified: validateDrop is never called, regardless of
+            // representation visibility). The UUID payload is validated
+            // on drop, and moveTab ignores IDs that aren't open tabs,
+            // so stray text drags can't reorder anything.
+            NSItemProvider(object: tab.id.uuidString as NSString)
         }
         .onDrop(
-            of: [.mindleTab],
+            of: [.text],
             delegate: TabDropDelegate(
                 target: tab.id,
                 store: store,
@@ -1843,7 +1834,7 @@ private struct TabDropDelegate: DropDelegate {
     @Binding var isTarget: Bool
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.mindleTab])
+        info.hasItemsConforming(to: [.text])
     }
 
     func dropEntered(info: DropInfo) { isTarget = true }
@@ -1851,10 +1842,9 @@ private struct TabDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         isTarget = false
-        guard let provider = info.itemProviders(for: [.mindleTab]).first else { return false }
-        provider.loadDataRepresentation(forTypeIdentifier: UTType.mindleTab.identifier) { data, _ in
-            guard let data,
-                  let str = String(data: data, encoding: .utf8),
+        guard let provider = info.itemProviders(for: [.text]).first else { return false }
+        provider.loadObject(ofClass: NSString.self) { item, _ in
+            guard let str = item as? String,
                   let id = UUID(uuidString: str) else { return }
             Task { @MainActor in
                 store.moveTab(id: id, before: target)
