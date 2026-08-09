@@ -16,6 +16,8 @@ struct WebReaderView: NSViewRepresentable {
         userContent.add(context.coordinator, name: "diffSetCurrent")
         userContent.add(context.coordinator, name: "diffAcceptAll")
         userContent.add(context.coordinator, name: "diffRejectAll")
+        userContent.add(context.coordinator, name: "headings")
+        userContent.add(context.coordinator, name: "scrollState")
         config.userContentController = userContent
         config.setURLSchemeHandler(ImageSchemeHandler(), forURLScheme: ImageSchemeHandler.scheme)
         config.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -144,6 +146,12 @@ struct WebReaderView: NSViewRepresentable {
                 self.store.applyNote(text: text, prefix: prefix, suffix: suffix)
             }
         }
+
+        if let request = store.scrollToHeadingRequest,
+           request.token != coord.lastScrollToHeadingAt {
+            coord.lastScrollToHeadingAt = request.token
+            web.evaluateJavaScript("window.mindleScrollToHeading(\(jsString(request.id)));")
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -170,6 +178,7 @@ struct WebReaderView: NSViewRepresentable {
         var lastPDFExportAt: Date?
         var lastHighlightAt: Date?
         var lastNoteAt: Date?
+        var lastScrollToHeadingAt: Date?
 
         init(_ p: WebReaderView) { parent = p }
 
@@ -360,6 +369,36 @@ struct WebReaderView: NSViewRepresentable {
             case "diffRejectAll":
                 Task { @MainActor in
                     self.parent.store.rejectAllChanges()
+                }
+
+            case "headings":
+                guard let body = message.body as? [String: Any],
+                      let raw = body["headings"] as? [[String: Any]] else { return }
+                let parsed: [SpineHeading] = raw.compactMap { d in
+                    guard let id = d["id"] as? String,
+                          let text = d["text"] as? String,
+                          let level = d["level"] as? Int else { return nil }
+                    let top = (d["top"] as? Double).map { CGFloat($0) } ?? 0
+                    return SpineHeading(id: id, text: text, level: level, top: top)
+                }
+                Task { @MainActor in
+                    self.parent.store.updateHeadings(parsed)
+                }
+
+            case "scrollState":
+                guard let body = message.body as? [String: Any] else { return }
+                let scrollTop = (body["scrollTop"] as? Double).map { CGFloat($0) } ?? 0
+                let viewport = (body["viewportHeight"] as? Double).map { CGFloat($0) } ?? 0
+                let content = (body["contentHeight"] as? Double).map { CGFloat($0) } ?? 0
+                let active = (body["activeIndex"] as? Int) ?? -1
+                let state = SpineScrollState(
+                    scrollTop: scrollTop,
+                    viewportHeight: viewport,
+                    contentHeight: content,
+                    activeIndex: active
+                )
+                Task { @MainActor in
+                    self.parent.store.updateScrollState(state)
                 }
 
             default: break
