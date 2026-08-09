@@ -1668,7 +1668,7 @@ struct TabBar: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onDrop(
-                    of: [.text],
+                    of: [.mindleTab],
                     delegate: TrailingTabDropDelegate(
                         store: store,
                         isTarget: $isTrailingDropTarget
@@ -1697,7 +1697,7 @@ private struct TrailingTabDropDelegate: DropDelegate {
     @Binding var isTarget: Bool
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.text])
+        info.hasItemsConforming(to: [.mindleTab])
     }
 
     func dropEntered(info: DropInfo) { isTarget = true }
@@ -1705,9 +1705,11 @@ private struct TrailingTabDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         isTarget = false
-        guard let provider = info.itemProviders(for: [.text]).first else { return false }
-        provider.loadObject(ofClass: NSString.self) { item, _ in
-            guard let str = item as? String, let id = UUID(uuidString: str) else { return }
+        guard let provider = info.itemProviders(for: [.mindleTab]).first else { return false }
+        provider.loadDataRepresentation(forTypeIdentifier: UTType.mindleTab.identifier) { data, _ in
+            guard let data,
+                  let str = String(data: data, encoding: .utf8),
+                  let id = UUID(uuidString: str) else { return }
             Task { @MainActor in
                 store.moveTabToEnd(id: id)
             }
