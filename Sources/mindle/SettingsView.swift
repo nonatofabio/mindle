@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("mindle.fontScale") private var defaultFontScale: Double = 1.0
+    @AppStorage(BrowserDisplaySettings.highlightActiveFileKey)
+    private var highlightActiveFile = true
 
     var body: some View {
         Form {
@@ -34,6 +36,10 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            }
+
+            Section("File Browser") {
+                Toggle("Highlight the active file", isOn: $highlightActiveFile)
             }
         }
         .formStyle(.grouped)

@@ -12,7 +12,28 @@ permissions:
   contents: write
 
 jobs:
+  tests:
+    permissions:
+      contents: read
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.2.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Run logic and screenshot tests
+        run: |
+          chmod +x run-tests.sh run-screenshot-tests.sh
+          ./run-tests.sh
+          ./run-screenshot-tests.sh
+
   build:
+    needs: tests
+    permissions:
+      contents: write
     runs-on: macos-26
     env:
       # Non-secret mirror so `if:` conditions can gate on signing availability.
@@ -27,6 +48,7 @@ jobs:
         with:
           fetch-depth: 0   # full history so build.sh's rev-list count is accurate
           fetch-tags: true # ensure local refs/tags/* so `git describe` resolves the tag
+          persist-credentials: false
 
       - name: Select Xcode
         # Xcode 26 ships the macOS 26 SDK, which is what lights up
@@ -206,6 +228,7 @@ jobs:
       - name: Sign DMG for Sparkle and update appcast
         if: env.SIGN_IDENTITY != '' && startsWith(github.ref, 'refs/tags/v')
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
           set -euo pipefail
@@ -264,7 +287,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/appcast.xml
           git commit -m "Update appcast for $TAG_NAME (signed DMG entry)"
-          git push origin main
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" main
 
       - name: Package zip (fallback)
         run: |

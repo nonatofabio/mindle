@@ -7,11 +7,18 @@ set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p .build
 swiftc -O \
+  -framework AppKit \
+  Sources/mindle/BrowserDisplaySettings.swift \
+  Sources/mindle/FileBrowserPresentation.swift \
   Sources/mindle/SSHTarget.swift \
   Sources/mindle/SSHTransport.swift \
+  Sources/mindle/TitleBarDoubleClick.swift \
   Tests/harness/TestHarness.swift \
+  Tests/harness/BrowserDisplaySettingsChecks.swift \
+  Tests/harness/FileBrowserPresentationChecks.swift \
   Tests/harness/SSHTargetChecks.swift \
   Tests/harness/SSHTransportChecks.swift \
+  Tests/harness/TitleBarDoubleClickChecks.swift \
   Tests/harness/main.swift \
   -o .build/run-tests
 .build/run-tests

@@ -1,6 +1,10 @@
 import SwiftUI
 import AppKit
 
+enum ReaderTheme: String, CaseIterable, Codable {
+    case light, sepia, dark
+}
+
 struct ThemeColors {
     let background: Color
     let surface: Color

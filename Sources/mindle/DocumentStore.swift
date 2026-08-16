@@ -16,10 +16,6 @@ extension URL {
     }
 }
 
-enum ReaderTheme: String, CaseIterable, Codable {
-    case light, sepia, dark
-}
-
 /// What kind of document is in the active tab — picks the renderer pipeline.
 /// Markdown flows through the WKWebView + markdown-it pipeline; PDF flows
 /// through the native PDFKit pipeline. Derived from the file URL's extension
@@ -169,14 +165,6 @@ enum AnnotationStatus: String, Codable {
     case open, resolved, wontfix
 }
 
-struct FileNode: Identifiable, Equatable {
-    var id: URL { url }
-    let url: URL
-    let name: String
-    let isDirectory: Bool
-    let children: [FileNode]?   // nil = leaf file; non-nil = directory
-}
-
 /// One open document inside a window. Active-tab state still lives in
 /// the window-scoped @Published vars (`fileURL`, `rawText`, `annotations`,
 /// `lastSyncedText`) so all existing features keep working untouched;
@@ -301,6 +289,9 @@ final class DocumentStore: ObservableObject {
     @Published var showAnnotations: Bool = false
     @Published var showFileBrowser: Bool = false
     @Published var fileTree: FileNode? = nil
+    @Published var fileBrowserIsLoading = false
+    @Published var fileBrowserErrorMessage: String?
+    private var fileBrowserRefreshGeneration = 0
 
     // Tabs (per-window). Empty when no document is open; otherwise the active
     // tab's state mirrors `fileURL` / `rawText` / `annotations` above.
@@ -1175,8 +1166,31 @@ final class DocumentStore: ObservableObject {
     static let browsableExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt", "pdf"]
 
     func refreshFileTree() {
-        guard let url = fileURL else { fileTree = nil; return }
-        fileTree = Self.buildTree(at: url.deletingLastPathComponent())
+        guard let url = fileURL else {
+            fileBrowserRefreshGeneration += 1
+            fileTree = nil
+            fileBrowserIsLoading = false
+            fileBrowserErrorMessage = nil
+            return
+        }
+        let rootURL = url.deletingLastPathComponent()
+        fileBrowserRefreshGeneration += 1
+        let generation = fileBrowserRefreshGeneration
+        fileBrowserIsLoading = true
+        fileBrowserErrorMessage = nil
+
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, self.fileBrowserRefreshGeneration == generation else { return }
+            do {
+                self.fileTree = try Self.buildTree(at: rootURL)
+                self.fileBrowserErrorMessage = nil
+            } catch {
+                self.fileTree = nil
+                self.fileBrowserErrorMessage = error.localizedDescription
+            }
+            self.fileBrowserIsLoading = false
+        }
     }
 
     private static func isDescendant(url: URL, of ancestor: URL) -> Bool {
@@ -1186,21 +1200,19 @@ final class DocumentStore: ObservableObject {
         return uPath.hasPrefix(prefix)
     }
 
-    private static func buildTree(at dir: URL) -> FileNode? {
+    private static func buildTree(at dir: URL) throws -> FileNode {
         let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
+        let entries = try fm.contentsOfDirectory(
             at: dir,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
-        ) else {
-            return FileNode(url: dir, name: dir.lastPathComponent, isDirectory: true, children: [])
-        }
+        )
 
         var children: [FileNode] = []
         for entry in entries {
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             if isDir {
-                if let sub = buildTree(at: entry), !(sub.children ?? []).isEmpty {
+                if let sub = try? buildTree(at: entry), !(sub.children ?? []).isEmpty {
                     children.append(sub)
                 }
             } else if browsableExtensions.contains(entry.pathExtension.lowercased()) {
