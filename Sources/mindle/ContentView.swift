@@ -22,7 +22,12 @@ struct ContentView: View {
                     }
                     HSplitView {
                         if store.showFileBrowser {
-                            FileBrowserSidebar()
+                            FileBrowserSidebar(
+                                browser: store.fileBrowser,
+                                theme: store.theme,
+                                onRefresh: store.refreshFileTree,
+                                onOpen: store.open
+                            )
                                 .frame(minWidth: 200, idealWidth: 260, maxWidth: 400)
                         }
                         ReaderPane()
@@ -49,7 +54,7 @@ struct ContentView: View {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         store.showFileBrowser.toggle()
                     }
-                    if store.showFileBrowser && store.fileTree == nil {
+                    if store.showFileBrowser && store.fileBrowser.tree == nil {
                         store.refreshFileTree()
                     }
                 } label: {
@@ -145,6 +150,9 @@ struct ContentView: View {
                 return true
             }
             return false
+        }
+        .onDisappear {
+            store.fileBrowser.cancelAll()
         }
     }
 
@@ -1282,140 +1290,6 @@ struct AnnotationMessageRow: View {
         }
         return NSFont.systemFont(ofSize: size)
     }()
-}
-
-// MARK: - File browser sidebar
-
-struct FileBrowserSidebar: View {
-    @EnvironmentObject var store: DocumentStore
-
-    var body: some View {
-        let c = store.theme.colors
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "folder")
-                    .foregroundStyle(c.accent)
-                Text("Files")
-                    .font(.system(size: 13, weight: .semibold, design: .serif))
-                    .foregroundStyle(c.text)
-                Spacer()
-                Button {
-                    store.refreshFileTree()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(c.muted)
-                .help("Refresh file list")
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            Rectangle().fill(c.rule.opacity(0.4)).frame(height: 0.5)
-
-            if let tree = store.fileTree, let children = tree.children, !children.isEmpty {
-                ScrollView {
-                    // Non-lazy VStack so the tree's content size stays constant
-                    // when other window state changes (e.g. fileURL flipping
-                    // isCurrent on a row, or the TabBar appearing/disappearing
-                    // as tabs.count crosses the 2-to-1 boundary). LazyVStack
-                    // re-measured rows on those events and could nudge the
-                    // scroll position, making the active row appear to shift
-                    // (#36). The directories Mindle browses are typically
-                    // small enough that eager realization is fine.
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(children) { child in
-                            FileTreeRow(node: child, depth: 0)
-                        }
-                    }
-                    .padding(.vertical, 6)
-                }
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "tray")
-                        .font(.system(size: 28, weight: .ultraLight))
-                        .foregroundStyle(c.muted.opacity(0.7))
-                    Text("No markdown files\nin this directory.")
-                        .multilineTextAlignment(.center)
-                        .font(.system(size: 12, design: .serif).italic())
-                        .foregroundStyle(c.muted)
-                        .padding(.horizontal, 24)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .background(c.sidebar)
-    }
-}
-
-struct FileTreeRow: View {
-    let node: FileNode
-    let depth: Int
-    @EnvironmentObject var store: DocumentStore
-    @State private var isExpanded: Bool = true
-
-    var body: some View {
-        let c = store.theme.colors
-        if node.isDirectory {
-            Button {
-                withAnimation(.easeInOut(duration: 0.12)) { isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(c.muted)
-                        .frame(width: 10)
-                    Image(systemName: "folder")
-                        .font(.system(size: 11))
-                        .foregroundStyle(c.muted)
-                    Text(node.name)
-                        .font(.system(size: 12, weight: .medium, design: .serif))
-                        .foregroundStyle(c.text)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 0)
-                }
-                .padding(.leading, CGFloat(depth) * 14 + 8)
-                .padding(.trailing, 10)
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                ForEach(node.children ?? []) { child in
-                    FileTreeRow(node: child, depth: depth + 1)
-                }
-            }
-        } else {
-            let isCurrent = store.fileURL?.standardizedFileURL == node.url.standardizedFileURL
-            Button {
-                store.open(url: node.url)
-            } label: {
-                HStack(spacing: 6) {
-                    Spacer().frame(width: 10)
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 11))
-                        .foregroundStyle(isCurrent ? c.accent : c.muted)
-                    Text(node.name)
-                        .font(.system(size: 12, design: .serif))
-                        .foregroundStyle(c.text)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 0)
-                }
-                .padding(.leading, CGFloat(depth) * 14 + 8)
-                .padding(.trailing, 10)
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(isCurrent ? c.accent.opacity(0.14) : Color.clear)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
-    }
 }
 
 // MARK: - Tab bar

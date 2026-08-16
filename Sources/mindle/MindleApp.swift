@@ -487,7 +487,7 @@ struct MindleCommands: Commands {
             Button((store?.showFileBrowser ?? false) ? "Hide Files" : "Show Files") {
                 guard let store else { return }
                 store.showFileBrowser.toggle()
-                if store.showFileBrowser && store.fileTree == nil {
+                if store.showFileBrowser && store.fileBrowser.tree == nil {
                     store.refreshFileTree()
                 }
             }

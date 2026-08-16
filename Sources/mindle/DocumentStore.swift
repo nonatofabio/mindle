@@ -169,14 +169,6 @@ enum AnnotationStatus: String, Codable {
     case open, resolved, wontfix
 }
 
-struct FileNode: Identifiable, Equatable {
-    var id: URL { url }
-    let url: URL
-    let name: String
-    let isDirectory: Bool
-    let children: [FileNode]?   // nil = leaf file; non-nil = directory
-}
-
 /// One open document inside a window. Active-tab state still lives in
 /// the window-scoped @Published vars (`fileURL`, `rawText`, `annotations`,
 /// `lastSyncedText`) so all existing features keep working untouched;
@@ -300,7 +292,7 @@ final class DocumentStore: ObservableObject {
     }
     @Published var showAnnotations: Bool = false
     @Published var showFileBrowser: Bool = false
-    @Published var fileTree: FileNode? = nil
+    let fileBrowser = FileBrowserState()
 
     // Tabs (per-window). Empty when no document is open; otherwise the active
     // tab's state mirrors `fileURL` / `rawText` / `annotations` above.
@@ -522,8 +514,12 @@ final class DocumentStore: ObservableObject {
             // the markdown pipeline (markdown-it, search, highlight, diff)
             // doesn't try to do anything with the binary PDF bytes.
             let kind = DocumentKind.kind(for: url)
-            let text: String = (kind == .pdf) ? "" : try String(contentsOf: url, encoding: .utf8)
-            finishOpen(url: url, text: text, kind: kind, sourceURL: nil, remoteTarget: nil)
+            let text: String = try PerformanceTrace.measure("LocalFileRead") {
+                (kind == .pdf) ? "" : try String(contentsOf: url, encoding: .utf8)
+            }
+            PerformanceTrace.measure("FileOpenApply") {
+                finishOpen(url: url, text: text, kind: kind, sourceURL: nil, remoteTarget: nil)
+            }
         } catch {
             NSSound.beep()
         }
@@ -537,8 +533,8 @@ final class DocumentStore: ObservableObject {
         // Re-root the file tree only when the new file is outside the current scope.
         // Clicking a file inside a subfolder of the current root must preserve rooting.
         let shouldRebuildTree: Bool
-        if let root = fileTree?.url {
-            shouldRebuildTree = !Self.isDescendant(url: url, of: root)
+        if let root = fileBrowser.rootURL {
+            shouldRebuildTree = !FileTreeBuilder.isDescendant(url, of: root)
         } else {
             shouldRebuildTree = true
         }
@@ -571,7 +567,10 @@ final class DocumentStore: ObservableObject {
         // Capture the sidecar-loaded annotations into the tab snapshot.
         snapshotActiveTab()
 
-        if shouldRebuildTree { refreshFileTree() }
+        if shouldRebuildTree {
+            fileBrowser.setRoot(url.deletingLastPathComponent())
+        }
+        syncFileBrowserSelection(for: url)
         if url.isFileURL && remoteTarget == nil {
             NSDocumentController.shared.noteNewRecentDocumentURL(url)
         }
@@ -860,6 +859,7 @@ final class DocumentStore: ObservableObject {
         lastSyncedText = placeholder
         annotations = []
         collaborators = [:]
+        syncFileBrowserSelection(for: url)
         closeSearch()
         focusedAnnotation = nil
         editingAnnotationID = nil
@@ -924,6 +924,7 @@ final class DocumentStore: ObservableObject {
         lastSyncedText = raw
         annotations = []
         collaborators = [:]
+        syncFileBrowserSelection(for: url)
         closeSearch()
         focusedAnnotation = nil
         editingAnnotationID = nil
@@ -1098,6 +1099,7 @@ final class DocumentStore: ObservableObject {
             // Last tab closed — back to empty state.
             activeTabID = nil
             fileURL = nil
+            syncFileBrowserSelection(for: nil)
             activeRemoteTarget = nil
             rawText = ""
             lastSyncedText = ""
@@ -1124,6 +1126,7 @@ final class DocumentStore: ObservableObject {
 
     private func loadTabState(_ tab: DocumentTab) {
         fileURL = tab.fileURL
+        syncFileBrowserSelection(for: tab.fileURL)
         self.activeRemoteTarget = tab.sourceURL.flatMap { SSHTarget(sourceURL: $0) }
         rawText = tab.rawText
         lastSyncedText = tab.lastSyncedText
@@ -1172,48 +1175,29 @@ final class DocumentStore: ObservableObject {
 
     // MARK: - File browser
 
-    static let browsableExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt", "pdf"]
-
     func refreshFileTree() {
-        guard let url = fileURL else { fileTree = nil; return }
-        fileTree = Self.buildTree(at: url.deletingLastPathComponent())
+        guard let url = fileURL, url.isFileURL else {
+            fileBrowser.setRoot(nil)
+            return
+        }
+        let root = fileBrowser.rootURL
+        if let root, FileTreeBuilder.isDescendant(url, of: root) {
+            fileBrowser.refresh()
+        } else {
+            fileBrowser.setRoot(url.deletingLastPathComponent())
+        }
+        syncFileBrowserSelection(for: url)
     }
 
-    private static func isDescendant(url: URL, of ancestor: URL) -> Bool {
-        let aPath = ancestor.standardizedFileURL.path
-        let uPath = url.standardizedFileURL.path
-        let prefix = aPath.hasSuffix("/") ? aPath : aPath + "/"
-        return uPath.hasPrefix(prefix)
-    }
-
-    private static func buildTree(at dir: URL) -> FileNode? {
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
-            at: dir,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return FileNode(url: dir, name: dir.lastPathComponent, isDirectory: true, children: [])
+    private func syncFileBrowserSelection(for url: URL?) {
+        guard let url,
+              url.isFileURL,
+              let root = fileBrowser.rootURL,
+              FileTreeBuilder.isDescendant(url, of: root) else {
+            fileBrowser.setSelectedURL(nil)
+            return
         }
-
-        var children: [FileNode] = []
-        for entry in entries {
-            let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            if isDir {
-                if let sub = buildTree(at: entry), !(sub.children ?? []).isEmpty {
-                    children.append(sub)
-                }
-            } else if browsableExtensions.contains(entry.pathExtension.lowercased()) {
-                children.append(FileNode(url: entry, name: entry.lastPathComponent, isDirectory: false, children: nil))
-            }
-        }
-
-        children.sort { a, b in
-            if a.isDirectory != b.isDirectory { return a.isDirectory }
-            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-        }
-
-        return FileNode(url: dir, name: dir.lastPathComponent, isDirectory: true, children: children)
+        fileBrowser.setSelectedURL(url)
     }
 
     func toggleTheme() {

@@ -1,8 +1,11 @@
 import Foundation
 
 var failures = 0
+failures += runFileTreeChecks()
+failures += await runGitFileMetadataChecks()
 failures += runSSHTargetChecks()
 failures += await runSSHTransportChecks()
+failures += await runFileBrowserStateChecks()
 
 if failures > 0 {
     print("\nFAILED: \(failures) check(s)")
