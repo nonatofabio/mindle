@@ -1,9 +1,8 @@
 name: File Browser Performance Tests
 
 on:
-  pull_request:
-    branches: [main]
   push:
+  pull_request:
     branches: [main]
 
 permissions:
