@@ -21,7 +21,28 @@ After implementation, the focused suites pass. The row/state checks specifically
 - cancelled generations cannot publish rows;
 - repeated batched Git collection completes without process-pipe hangs.
 
-These checks cover the state/identity conditions intended to prevent the LazyVStack regression, but they do not prove SwiftUI preserves the live scroll offset. The manual checklist below remains required.
+`./run-ui-tests.sh` additionally mounts the production `FileBrowserSidebar` in
+an `NSHostingView`, scrolls its actual `NSScrollView` to 18 positions through a
+1,200-row tree, and measures the native clip-view offset through tab-count,
+selection, and collapse/re-expand transitions. It requires no Accessibility or
+Automation permission.
+
+The test's controlled red mutation assigned a fresh identity to the production
+scroll view on every render. The harness failed with:
+
+```text
+✗ Flattened sidebar moved by 23295.150 pt (tolerance 0.500 pt).
+```
+
+After removing that mutation, the production implementation passes:
+
+```text
+✓ Issue #36: 198 tab/selection transitions held within 0.250 pt
+```
+
+The dedicated `performance-tests.yml` workflow runs both logic and UI harnesses
+in a `contents: read` macOS job with checkout credentials disabled. This tests
+the actual AppKit/SwiftUI runtime; a Linux container cannot execute AppKit.
 
 ## Benchmarks
 
@@ -71,15 +92,20 @@ Checklist:
 7. Repeat after collapsing and re-expanding a directory above the active row.
 8. Repeat with keyboard `⌘W` and with tab close buttons.
 
-### Manual status
+### Automation status
 
-Not manually verified. The final built app was launched against the 1,000-document fixture and remained running after four additional file-open events were sent. The accessibility probe needed to operate the sidebar failed before interaction:
+External System Events automation remains unavailable because the host denied
+Apple Events:
 
 ```text
 Not authorized to send Apple events to System Events. (-1743)
 ```
 
-Because the sidebar could not be scrolled or its tab close controls driven, no claim is made about visual scroll stability. Run the checklist above in an interactive macOS session with Accessibility/Automation permission before merging.
+TCC accessibility grants are user-controlled and cannot be safely self-issued
+by a test process. The in-process harness avoids that boundary: it drives the
+same SwiftUI state transitions and reads the underlying `NSScrollView` directly.
+The checklist remains useful as a human acceptance pass, but the scroll-offset
+regression is now automated red/green coverage rather than an untested claim.
 
 ## LazyVStack fallback if #36 is unstable
 

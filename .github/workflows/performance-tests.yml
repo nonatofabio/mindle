@@ -1,0 +1,28 @@
+name: File Browser Performance Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  performance-tests:
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.2.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Run file browser tests
+        run: |
+          chmod +x run-tests.sh run-ui-tests.sh
+          ./run-tests.sh
+          ./run-ui-tests.sh
