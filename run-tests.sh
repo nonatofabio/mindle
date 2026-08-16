@@ -8,10 +8,24 @@ cd "$(dirname "$0")"
 mkdir -p .build
 swiftc -O \
   Sources/mindle/SSHTarget.swift \
+  Sources/mindle/SSHProfile.swift \
+  Sources/mindle/RemoteMarkdownAssets.swift \
   Sources/mindle/SSHTransport.swift \
   Tests/harness/TestHarness.swift \
   Tests/harness/SSHTargetChecks.swift \
+  Tests/harness/SSHProfileChecks.swift \
+  Tests/harness/RemoteMarkdownAssetsChecks.swift \
   Tests/harness/SSHTransportChecks.swift \
   Tests/harness/main.swift \
   -o .build/run-tests
 .build/run-tests
+
+swiftc -O \
+  -framework AppKit \
+  -framework Foundation \
+  -framework UniformTypeIdentifiers \
+  -framework WebKit \
+  Sources/mindle/ImageSchemeHandler.swift \
+  Tests/web/ReaderImageHarness.swift \
+  -o .build/run-reader-image-tests
+.build/run-reader-image-tests

@@ -31,7 +31,8 @@ final class ImageSchemeHandler: NSObject, WKURLSchemeHandler {
             httpVersion: "HTTP/1.1",
             headerFields: [
                 "Content-Type": mime,
-                "Content-Length": "\(data.count)"
+                "Content-Length": "\(data.count)",
+                "Cache-Control": "no-store"
             ]
         )!
         urlSchemeTask.didReceive(resp)

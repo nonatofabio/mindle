@@ -1219,47 +1219,59 @@
   function rewriteImages() {
     const imgs = doc.querySelectorAll("img");
     imgs.forEach(img => {
-      const src = img.getAttribute("src") || "";
-      const res = resolveImageSrc(src);
-      if (res.blocked) {
-        const ph = document.createElement("span");
-        ph.className = "mindle-img-blocked";
-        ph.textContent = "[remote image hidden — " + (img.alt || src) + "]";
-        img.replaceWith(ph);
-      } else if (res.url !== null && res.url !== src) {
-        img.setAttribute("src", res.url);
-        img.addEventListener("error", () => {
-          const ph = document.createElement("span");
-          ph.className = "mindle-img-missing";
-          ph.textContent = "[image not found — " + (img.alt || src) + "]";
-          img.replaceWith(ph);
-        });
-      } else if (res.url !== null) {
-        // Left as-is (data: URL etc.) — still add broken-image handler.
-        img.addEventListener("error", () => {
-          const ph = document.createElement("span");
-          ph.className = "mindle-img-missing";
-          ph.textContent = "[image not found — " + (img.alt || src) + "]";
-          img.replaceWith(ph);
-        });
+      let src = "";
+      try {
+        src = img.getAttribute("src") || "";
+        const res = resolveImageSrc(src);
+        if (res.blocked) {
+          replaceImageWithPlaceholder(img, "mindle-img-blocked", "remote image hidden", src);
+        } else if (res.url !== null) {
+          if (res.url !== src) img.setAttribute("src", res.url);
+          img.addEventListener("error", () => {
+            replaceImageWithPlaceholder(img, "mindle-img-missing", "image not found", src);
+          });
+        }
+      } catch (error) {
+        console.error("Mindle couldn't rewrite an image source.", { src, error });
+        replaceImageWithPlaceholder(img, "mindle-img-missing", "invalid image path", src);
       }
     });
+  }
+
+  function replaceImageWithPlaceholder(img, className, message, src) {
+    const ph = document.createElement("span");
+    ph.className = className;
+    ph.textContent = "[" + message + " — " + (img.alt || src || "image") + "]";
+    img.replaceWith(ph);
   }
 
   function resolveImageSrc(src) {
     if (!src) return { url: null };
     if (src.startsWith("data:")) return { url: src };
     if (/^https?:/i.test(src)) return { blocked: true };
+    const pathSrc = decodeImagePath(src);
     if (/^file:\/\//i.test(src)) {
-      const path = src.replace(/^file:\/\//i, "");
-      return { url: "mindle-file://" + path };
+      const path = pathSrc.replace(/^file:\/\//i, "");
+      return { url: "mindle-file://" + encodeImagePath(path) };
     }
-    if (src.startsWith("/")) {
-      return { url: "mindle-file://" + encodeURI(src) };
+    if (pathSrc.startsWith("/")) {
+      return { url: "mindle-file://" + encodeImagePath(pathSrc) };
     }
-    if (!baseDir) return { url: src };
-    const resolved = resolveRelativePath(baseDir, src);
-    return { url: "mindle-file://" + encodeURI(resolved) };
+    if (!baseDir) return { url: pathSrc };
+    const resolved = resolveRelativePath(baseDir, pathSrc);
+    return { url: "mindle-file://" + encodeImagePath(resolved) };
+  }
+
+  function decodeImagePath(src) {
+    try {
+      return decodeURIComponent(src);
+    } catch (_) {
+      return src;
+    }
+  }
+
+  function encodeImagePath(path) {
+    return path.split("/").map(encodeURIComponent).join("/");
   }
 
   function resolveRelativePath(base, rel) {

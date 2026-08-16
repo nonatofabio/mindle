@@ -13,7 +13,7 @@ struct ContentView: View {
             // the material bleeds to the window's system-gray backing.
             c.background.ignoresSafeArea()
 
-            if store.fileURL == nil {
+            if store.fileURL == nil && !store.fileBrowserHasRoot {
                 EmptyStateView()
             } else {
                 VStack(spacing: 0) {
@@ -25,8 +25,13 @@ struct ContentView: View {
                             FileBrowserSidebar()
                                 .frame(minWidth: 200, idealWidth: 260, maxWidth: 400)
                         }
-                        ReaderPane()
-                            .frame(minWidth: 480)
+                        if store.fileURL == nil {
+                            RemoteBrowserPlaceholder()
+                                .frame(minWidth: 480)
+                        } else {
+                            ReaderPane()
+                                .frame(minWidth: 480)
+                        }
                         if store.showAnnotations {
                             AnnotationsSidebar()
                                 .frame(minWidth: 280, idealWidth: 340, maxWidth: 460)
@@ -36,6 +41,16 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    Task { await store.openFavoriteSSHProfile() }
+                } label: {
+                    Image(systemName: "network")
+                        .foregroundStyle(c.text)
+                }
+                .help("Open favorite SSH profile")
+            }
+
             ToolbarItem(placement: .navigation) {
                 Button { store.openWithPanel() } label: {
                     Image(systemName: "doc.text")
@@ -57,7 +72,7 @@ struct ContentView: View {
                         .foregroundStyle(store.showFileBrowser ? c.accent : c.muted)
                 }
                 .help("Toggle files (⌘⇧F)")
-                .disabled(store.fileURL == nil)
+                .disabled(store.fileURL == nil && !store.fileBrowserHasRoot)
             }
 
             ToolbarItem(placement: .principal) {
@@ -154,6 +169,27 @@ struct ContentView: View {
         case .sepia: return "book.closed"
         case .dark:  return "moon.stars"
         }
+    }
+}
+
+private struct RemoteBrowserPlaceholder: View {
+    @EnvironmentObject var store: DocumentStore
+
+    var body: some View {
+        let c = store.theme.colors
+        VStack(spacing: 12) {
+            Image(systemName: "network")
+                .font(.system(size: 42, weight: .ultraLight))
+                .foregroundStyle(c.muted)
+            Text("Choose a remote document")
+                .font(.system(size: 18, design: .serif))
+                .foregroundStyle(c.text)
+            Text("Files stay confined to the configured SSH profile root.")
+                .font(.system(size: 12, design: .serif))
+                .foregroundStyle(c.muted)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(c.background)
     }
 }
 
@@ -1293,9 +1329,9 @@ struct FileBrowserSidebar: View {
         let c = store.theme.colors
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "folder")
+                Image(systemName: store.fileTree?.url.isMindleSSH == true ? "network" : "folder")
                     .foregroundStyle(c.accent)
-                Text("Files")
+                Text(store.fileBrowserTitle)
                     .font(.system(size: 13, weight: .semibold, design: .serif))
                     .foregroundStyle(c.text)
                 Spacer()
@@ -1314,7 +1350,28 @@ struct FileBrowserSidebar: View {
 
             Rectangle().fill(c.rule.opacity(0.4)).frame(height: 0.5)
 
-            if let tree = store.fileTree, let children = tree.children, !children.isEmpty {
+            if store.fileBrowserIsLoading {
+                VStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading remote documents…")
+                        .font(.system(size: 12, design: .serif).italic())
+                        .foregroundStyle(c.muted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = store.fileBrowserError {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 24, weight: .ultraLight))
+                        .foregroundStyle(c.muted)
+                    Text(error)
+                        .multilineTextAlignment(.center)
+                        .font(.system(size: 12, design: .serif))
+                        .foregroundStyle(c.muted)
+                        .padding(.horizontal, 20)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let tree = store.fileTree, let children = tree.children, !children.isEmpty {
                 ScrollView {
                     // Non-lazy VStack so the tree's content size stays constant
                     // when other window state changes (e.g. fileURL flipping
@@ -1336,7 +1393,7 @@ struct FileBrowserSidebar: View {
                     Image(systemName: "tray")
                         .font(.system(size: 28, weight: .ultraLight))
                         .foregroundStyle(c.muted.opacity(0.7))
-                    Text("No markdown files\nin this directory.")
+                    Text("No supported documents\nin this directory.")
                         .multilineTextAlignment(.center)
                         .font(.system(size: 12, design: .serif).italic())
                         .foregroundStyle(c.muted)
@@ -1390,9 +1447,14 @@ struct FileTreeRow: View {
                 }
             }
         } else {
-            let isCurrent = store.fileURL?.standardizedFileURL == node.url.standardizedFileURL
+            let activeSourceURL = store.activeTabID.flatMap { activeID in
+                store.tabs.first(where: { $0.id == activeID })?.sourceURL
+            }
+            let isCurrent = node.url.isMindleSSH
+                ? activeSourceURL == node.url
+                : store.fileURL?.standardizedFileURL == node.url.standardizedFileURL
             Button {
-                store.open(url: node.url)
+                store.openBrowserItem(node.url)
             } label: {
                 HStack(spacing: 6) {
                     Spacer().frame(width: 10)

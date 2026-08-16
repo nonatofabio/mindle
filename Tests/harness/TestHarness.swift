@@ -1,5 +1,18 @@
 import Foundation
 
+func testFixtureURL(_ name: String) -> URL {
+    URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        .appendingPathComponent(".build/test-fixtures", isDirectory: true)
+        .appendingPathComponent(name, isDirectory: true)
+}
+
+func resetTestFixture(_ name: String) throws -> URL {
+    let url = testFixtureURL(name)
+    try? FileManager.default.removeItem(at: url)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+}
+
 /// Minimal assert harness for swiftc-compiled tests. This project builds
 /// with Command Line Tools only (no Xcode → no XCTest), so tests are plain
 /// Swift compiled alongside the pure-logic sources by `run-tests.sh`. Each

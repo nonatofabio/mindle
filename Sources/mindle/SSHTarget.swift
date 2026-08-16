@@ -27,10 +27,48 @@ struct SSHTarget: Equatable {
         return comps.url
     }
 
-    /// Deterministic local proxy: `<cacheDir>/<hash>/<basename>`.
+    /// Deterministic local proxy that mirrors the remote directory structure.
+    /// Keeping siblings adjacent lets the reader resolve fetched image paths
+    /// through the same local base directory as ordinary local documents.
     func proxyURL(cacheDir: URL) -> URL {
-        cacheDir.appendingPathComponent(Self.fnv1a(canonical), isDirectory: true)
-                .appendingPathComponent(basename)
+        remotePath
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .reduce(
+                cacheDir.appendingPathComponent(Self.fnv1a(userHost), isDirectory: true)
+            ) { partial, component in
+                partial.appendingPathComponent(String(component))
+            }
+    }
+
+    func migrateLegacyCacheIfNeeded(
+        cacheDir: URL,
+        fileManager: FileManager = .default
+    ) throws {
+        let legacyProxy = cacheDir
+            .appendingPathComponent(Self.fnv1a(canonical), isDirectory: true)
+            .appendingPathComponent(basename)
+        let proxy = proxyURL(cacheDir: cacheDir)
+        let legacySidecar = legacyProxy.deletingLastPathComponent()
+            .appendingPathComponent(".\(legacyProxy.lastPathComponent).mindle.json")
+        let sidecar = proxy.deletingLastPathComponent()
+            .appendingPathComponent(".\(proxy.lastPathComponent).mindle.json")
+
+        guard fileManager.fileExists(atPath: legacyProxy.path)
+            || fileManager.fileExists(atPath: legacySidecar.path) else {
+            return
+        }
+        try fileManager.createDirectory(
+            at: proxy.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if fileManager.fileExists(atPath: legacyProxy.path),
+           !fileManager.fileExists(atPath: proxy.path) {
+            try fileManager.moveItem(at: legacyProxy, to: proxy)
+        }
+        if fileManager.fileExists(atPath: legacySidecar.path),
+           !fileManager.fileExists(atPath: sidecar.path) {
+            try fileManager.moveItem(at: legacySidecar, to: sidecar)
+        }
     }
 
     // MARK: Parsing
@@ -43,9 +81,7 @@ struct SSHTarget: Equatable {
         guard let colon = s.firstIndex(of: ":") else { return nil }
         let uh = String(s[..<colon])
         let rp = String(s[s.index(after: colon)...])
-        guard !uh.isEmpty, rp.hasPrefix("/") else { return nil }
-        self.userHost = uh
-        self.remotePath = rp
+        self.init(userHost: uh, remotePath: rp)
     }
 
     /// Parse a `mindle://ssh/<user@host>/<path>` URL. `url.path` is already
@@ -57,14 +93,24 @@ struct SSHTarget: Equatable {
         guard let slash = trimmed.firstIndex(of: "/") else { return nil }
         let uh = String(trimmed[..<slash])
         let rp = String(trimmed[slash...])   // keeps the leading "/"
-        guard !uh.isEmpty, rp.count > 1 else { return nil }
-        self.userHost = uh
-        self.remotePath = rp
+        guard rp.count > 1 else { return nil }
+        self.init(userHost: uh, remotePath: rp)
     }
 
-    private init(userHost: String, remotePath: String) {
-        self.userHost = userHost
-        self.remotePath = remotePath
+    init?(userHost: String, remotePath: String) {
+        let normalizedHost = userHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPath = (remotePath as NSString).standardizingPath
+        guard !normalizedHost.isEmpty,
+              !normalizedHost.hasPrefix("-"),
+              normalizedHost.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+              normalizedHost.rangeOfCharacter(from: .controlCharacters) == nil,
+              !normalizedHost.contains("/"),
+              normalizedPath.hasPrefix("/"),
+              normalizedPath.rangeOfCharacter(from: .controlCharacters) == nil else {
+            return nil
+        }
+        self.userHost = normalizedHost
+        self.remotePath = normalizedPath
     }
 
     /// FNV-1a 64-bit hash, hex — same family as DocumentStore's content/url

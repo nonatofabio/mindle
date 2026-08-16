@@ -70,6 +70,7 @@ Requires **macOS 14+** and **Xcode Command Line Tools** (`xcode-select --install
 
 ### Workflow
 - **Tabs and multi-window** — open many files in one window (`⌘O` adds a tab) or pop a new window with `⌘N`. Each tab carries its own scroll, theme, font scale, and collaborator registry. `⌘W` closes the active tab when more than one is open, otherwise the window.
+- **SSH profiles** — the network toolbar button opens the favorite root from `~/Library/Application Support/Mindle/ssh-profiles.yaml`. The generated template is disabled until edited, remote listings fail if their configured root is missing, and Markdown plus allowlisted referenced images are cached in a host-keyed local mirror.
 - **Open remote URLs** — `⌘⇧L` opens any `http(s)` URL pointing at raw Markdown (a GitHub raw link, a hosted doc) as a tab. Annotations on URL documents persist locally keyed by URL hash, so re-opening the same URL brings the annotations back.
 - **Open from Clipboard** — `⌘⇧V` opens the pasteboard contents as a Markdown tab. Use this when the source is behind a login your browser already handles (internal GitLab raw, Confluence, anything auth-walled): copy the raw Markdown there, paste it here. Tabs are content-addressed, so re-pasting identical text re-opens the same tab with its prior annotations.
 - **File browser** — scoped sidebar tree of every `.md` and `.txt` in the current folder (`⌘⇧F`). Never escapes upward.

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html data-theme="sepia">
+<head>
+<meta charset="utf-8">
+<script src="../../Resources/web/vendor/markdown-it.min.js"></script>
+<script src="../../Resources/web/vendor/markdown-it-task-lists.js"></script>
+<script src="../../Resources/web/vendor/markdown-it-footnote.js"></script>
+<script src="../../Resources/web/vendor/markdown-it-anchor.js"></script>
+<script src="../../Resources/web/vendor/highlight.min.js"></script>
+<script src="../../Resources/web/vendor/diff.min.js"></script>
+<script>
+  window.__readerHarness = {
+    rewritten: [],
+    consoleErrors: [],
+    mermaidInitializeCount: 0,
+    mermaidParseCount: 0,
+    mermaidRenderCount: 0,
+    searchReports: []
+  };
+
+  const nativeGetAttribute = HTMLImageElement.prototype.getAttribute;
+  HTMLImageElement.prototype.getAttribute = function (name) {
+    if (name === "src" && this.alt === "bad image") {
+      throw new Error("controlled bad-image boundary");
+    }
+    return nativeGetAttribute.call(this, name);
+  };
+
+  const nativeSetAttribute = HTMLImageElement.prototype.setAttribute;
+  HTMLImageElement.prototype.setAttribute = function (name, value) {
+    if (name === "src") {
+      window.__readerHarness.rewritten.push({ alt: this.alt, value: String(value) });
+    }
+    return nativeSetAttribute.call(this, name, value);
+  };
+
+  const nativeConsoleError = console.error;
+  console.error = function (...args) {
+    window.__readerHarness.consoleErrors.push(args.map(String).join(" "));
+    nativeConsoleError.apply(console, args);
+  };
+
+  window.webkit = {
+    messageHandlers: {
+      searchResult: {
+        postMessage(payload) {
+          window.__readerHarness.searchReports.push(payload);
+        }
+      }
+    }
+  };
+
+  window.mermaid = {
+    initialize() {
+      window.__readerHarness.mermaidInitializeCount += 1;
+    },
+    async parse() {
+      window.__readerHarness.mermaidParseCount += 1;
+      return true;
+    },
+    async render(id) {
+      window.__readerHarness.mermaidRenderCount += 1;
+      return { svg: '<svg data-harness-id="' + id + '" viewBox="0 0 10 10"></svg>' };
+    }
+  };
+</script>
+</head>
+<body>
+  <article id="doc"></article>
+  <script src="../../Resources/web/reader.js"></script>
+  <script>
+    (async function () {
+      try {
+        window.mindleSetBaseDir("/fixture/book");
+        window.mindleSetAnnotations([{
+          id: "annotation-1",
+          text: "Annotated",
+          prefix: "",
+          suffix: " needle",
+          note: ""
+        }]);
+
+        const markdown = [
+          "Annotated needle text.",
+          "",
+          "![literal question](images/plot?final.png)",
+          "![encoded question](images/plot%3Ffinal.png)",
+          "![literal hash](images/section#hero.png)",
+          "![encoded hash](images/section%23hero.png)",
+          "![encoded space](images/diagram%20one.png)",
+          "![bad image](bad.png)",
+          "![remote](https://example.com/remote.png)",
+          "",
+          "```mermaid",
+          "graph TD",
+          "  A --> B",
+          "```"
+        ].join("\n");
+
+        await window.mindleLoad(markdown, false, null);
+        await window.mindleSearch("needle");
+
+        const latestRewrite = {};
+        for (const item of window.__readerHarness.rewritten) {
+          latestRewrite[item.alt] = item.value;
+        }
+        const expectedQuestion = "mindle-file:///fixture/book/images/plot%3Ffinal.png";
+        const expectedHash = "mindle-file:///fixture/book/images/section%23hero.png";
+        const checks = {
+          literalQuestion: latestRewrite["literal question"] === expectedQuestion,
+          encodedQuestion: latestRewrite["encoded question"] === expectedQuestion,
+          literalHash: latestRewrite["literal hash"] === expectedHash,
+          encodedHash: latestRewrite["encoded hash"] === expectedHash,
+          encodedSpace: latestRewrite["encoded space"]
+            === "mindle-file:///fixture/book/images/diagram%20one.png",
+          badImageIsolated: !!document.querySelector(".mindle-img-missing"),
+          badImageReported: window.__readerHarness.consoleErrors.some(
+            message => message.includes("couldn't rewrite an image source")
+          ),
+          remoteBlocked: !!document.querySelector(".mindle-img-blocked"),
+          annotationContinued: !!document.querySelector("mark.mindle-hl"),
+          searchContinued: !!document.querySelector("mark.mindle-search"),
+          mermaidInitialized: window.__readerHarness.mermaidInitializeCount > 0,
+          mermaidContinued: window.__readerHarness.mermaidRenderCount > 0
+            && !!document.querySelector(".mindle-mermaid svg")
+        };
+        window.__mindleHarnessResult = {
+          passed: Object.values(checks).every(Boolean),
+          checks,
+          rewritten: latestRewrite,
+          consoleErrors: window.__readerHarness.consoleErrors,
+          mermaidRenderCount: window.__readerHarness.mermaidRenderCount,
+          searchReports: window.__readerHarness.searchReports
+        };
+      } catch (error) {
+        window.__mindleHarnessResult = {
+          passed: false,
+          fatal: String(error) + (error && error.stack ? "\n" + error.stack : "")
+        };
+      }
+    })();
+  </script>
+</body>
+</html>
