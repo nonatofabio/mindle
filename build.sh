@@ -92,6 +92,7 @@ swiftc -O \
   -framework Cocoa -framework Foundation -framework Quartz -framework WebKit \
   -Xlinker -e -Xlinker _NSExtensionMain \
   Sources/MindleQuickLook/*.swift \
+  Sources/mindle/ReaderSecurity.swift \
   -o "$EXT_BIN"
 
 echo "→ Assembling Quick Look extension bundle…"

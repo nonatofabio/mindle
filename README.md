@@ -57,7 +57,7 @@ Requires **macOS 14+** and **Xcode Command Line Tools** (`xcode-select --install
 ## Features
 
 ### Reading
-- **Full GitHub-Flavored Markdown** — tables, task lists, footnotes, strikethrough, syntax-highlighted code, emoji, nested lists, raw HTML. Powered by [markdown-it](https://github.com/markdown-it/markdown-it) + [highlight.js](https://highlightjs.org).
+- **Full GitHub-Flavored Markdown** — tables, task lists, footnotes, strikethrough, syntax-highlighted code, emoji, nested lists, safe HTML formatting. Document scripts, embedded pages, and automatic network loads are blocked. Powered by [markdown-it](https://github.com/markdown-it/markdown-it) + [highlight.js](https://highlightjs.org), with bundled [DOMPurify](https://github.com/cure53/DOMPurify) sanitization.
 - **LaTeX math** — inline (`$a^2 + b^2 = c^2$`) and display (`$$ \int e^{-x^2} dx = \sqrt{\pi} $$`) blocks rendered with [KaTeX](https://katex.org), bundled locally.
 - **Mermaid diagrams** — flowcharts, sequence diagrams, and the rest, rendered inline. Click to expand.
 - **Images** — relative, absolute, `file://`, and `data:` URLs all resolve. Remote `http(s)` is blocked — no tracking pixels.

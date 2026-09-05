@@ -1046,7 +1046,17 @@
 
   async function applyAll() {
     const gen = ++applyGeneration;
-    doc.innerHTML = renderedHTML;
+    // Markdown can contain raw HTML, including in either side of a diff.
+    // Sanitize before insertion so document code never reaches our native bridge.
+    // Insert the sanitized nodes directly, without reparsing an HTML string.
+    const content = window.DOMPurify.sanitize(renderedHTML, {
+      RETURN_DOM_FRAGMENT: true,
+      // Local image URLs are part of the reader's supported file format.
+      ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|file):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+      FORBID_TAGS: ["style", "iframe", "object", "embed", "form", "base", "link", "meta", "audio", "video", "source"],
+      FORBID_ATTR: ["srcset", "autofocus"]
+    });
+    doc.replaceChildren(content);
     rewriteImages();
     await renderMermaidBlocks();
     // If a newer applyAll started while we were rendering mermaid,

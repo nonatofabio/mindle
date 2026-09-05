@@ -13,6 +13,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var webView: WKWebView!
     private var pendingMarkdown: String?
     private var pendingHandler: ((Error?) -> Void)?
+    private var readerURL: URL?
 
     override func loadView() {
         let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
@@ -53,6 +54,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 return
             }
             pendingMarkdown = markdown
+            readerURL = htmlURL
             pendingHandler = handler
             webView.loadFileURL(htmlURL, allowingReadAccessTo: htmlURL.deletingLastPathComponent())
 
@@ -74,6 +76,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard ReaderSecurity.isReaderURL(webView.url, readerURL: readerURL) else { return }
         guard let md = pendingMarkdown else { return }
         let escaped = jsString(md)
         webView.evaluateJavaScript("window.mindleLoad(\(escaped), false);") { [weak self] _, _ in
@@ -87,6 +90,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         pendingHandler?(error)
         pendingHandler = nil
         pendingMarkdown = nil
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        decisionHandler(ReaderSecurity.navigationPolicy(for: action, readerURL: readerURL) { _ in })
     }
 
     // MARK: - JS string escaping

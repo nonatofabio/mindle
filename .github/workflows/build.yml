@@ -12,7 +12,22 @@ permissions:
   contents: write
 
 jobs:
+  tests:
+    permissions:
+      contents: read
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.2.app || sudo xcode-select -s /Applications/Xcode.app
+      - name: Run logic and reader security tests
+        run: bash ./run-tests.sh
+
   build:
+    needs: tests
     runs-on: macos-26
     env:
       # Non-secret mirror so `if:` conditions can gate on signing availability.

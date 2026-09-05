@@ -30,6 +30,7 @@ struct WebReaderView: NSViewRepresentable {
         context.coordinator.web = web
 
         if let html = readerHTMLURL() {
+            context.coordinator.readerURL = html
             let baseDir = html.deletingLastPathComponent()
             web.loadFileURL(html, allowingReadAccessTo: baseDir)
         }
@@ -160,6 +161,7 @@ struct WebReaderView: NSViewRepresentable {
         let parent: WebReaderView
         weak var web: WKWebView?
         var loaded = false
+        var readerURL: URL?
 
         // Track last-sent values to avoid redundant pushes
         var lastSource: String = ""
@@ -283,6 +285,7 @@ struct WebReaderView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard ReaderSecurity.isReaderURL(webView.url, readerURL: readerURL) else { return }
             loaded = true
             // Force initial flush by clearing tracked state
             lastSource = ""
@@ -303,16 +306,14 @@ struct WebReaderView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if let url = action.request.url, action.navigationType == .linkActivated {
-                NSWorkspace.shared.open(url)
-                decisionHandler(.cancel)
-                return
-            }
-            decisionHandler(.allow)
+            decisionHandler(ReaderSecurity.navigationPolicy(for: action, readerURL: readerURL) {
+                NSWorkspace.shared.open($0)
+            })
         }
 
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
+            guard ReaderSecurity.accepts(message, readerURL: readerURL) else { return }
             switch message.name {
             case "selectionChanged":
                 guard let body = message.body as? [String: Any] else { return }

@@ -15,3 +15,4 @@ swiftc -O \
   Tests/harness/main.swift \
   -o .build/run-tests
 .build/run-tests
+bash ./run-reader-security-tests.sh
